@@ -247,12 +247,14 @@
   /* confirm modal (centered, prominent) */
   .modal-ov{position:fixed;inset:0;background:rgba(15,42,74,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;place-items:center;z-index:60;padding:20px}
   .modal-ov.show{display:grid;animation:fade .16s ease}
-  .modal-card{background:var(--card);border-radius:18px;box-shadow:var(--shadow-l);max-width:430px;width:100%;padding:30px 30px 24px;text-align:center;border-top:5px solid var(--bad);animation:pop .24s cubic-bezier(.2,.9,.3,1.25)}
+  .modal-card{background:var(--card);border-radius:18px;box-shadow:var(--shadow-l);max-width:430px;width:100%;padding:30px 30px 24px;text-align:center;border-top:5px solid var(--line);animation:pop .24s cubic-bezier(.2,.9,.3,1.25)}
+  .modal-card.danger{border-top-color:var(--bad)} .modal-card.warn{border-top-color:var(--warn)}
   @keyframes pop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
-  .cm-ic{width:62px;height:62px;border-radius:50%;background:var(--badbg);color:var(--bad);display:grid;place-items:center;margin:0 auto 16px}
+  .cm-ic{width:62px;height:62px;border-radius:50%;background:var(--line2);color:var(--muted);display:grid;place-items:center;margin:0 auto 16px}
+  .modal-card.danger .cm-ic{background:var(--badbg);color:var(--bad)} .modal-card.warn .cm-ic{background:var(--warnbg);color:var(--warn)}
   .cm-ic svg{width:29px;height:29px;stroke-width:2.2}
   .modal-card h3{margin:0 0 9px;font-size:19px;font-weight:800;color:var(--navy)}
-  .modal-card .cm-msg{margin:0 0 24px;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .modal-card .cm-msg{margin:0 0 24px;font-size:13.5px;color:var(--muted);line-height:1.6;white-space:pre-line}
   .cm-actions{display:flex;gap:11px;justify-content:center;flex-wrap:wrap}
   .cm-actions .btn{min-width:128px;justify-content:center}
   .btn-danger{background:linear-gradient(120deg,#ef4444,#dc2626);color:#fff}
@@ -384,15 +386,12 @@
 
 <div class="overlay" id="overlay"><div class="spin"><div class="loader"></div><span id="spin-txt"></span></div></div>
 <div class="toast" id="toast"></div>
-<div class="modal-ov" id="confirm-modal">
-  <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="cm-title">
-    <div class="cm-ic" data-icon="trash"></div>
-    <h3 id="cm-title" data-i18n="clear.title"></h3>
-    <p class="cm-msg" data-i18n="clear.msg"></p>
-    <div class="cm-actions">
-      <button class="btn btn-ghost" id="cm-cancel" data-i18n="clear.cancel"></button>
-      <button class="btn btn-danger" id="cm-ok"><span data-icon="trash"></span><span data-i18n="clear.ok"></span></button>
-    </div>
+<div class="modal-ov" id="modal">
+  <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="cm-ic" id="modal-ic"></div>
+    <h3 id="modal-title"></h3>
+    <p class="cm-msg" id="modal-msg"></p>
+    <div class="cm-actions" id="modal-actions"></div>
   </div>
 </div>
 
@@ -795,7 +794,7 @@ const I18N = {
     "app.tagline":"Convert raw data files → ready-to-use reports • processed 100% on your device",
     "app.credit":"Developed by the Intelligent Technology Department — <b>REV THAILAND</b>",
     "app.footer":"Sales Daily Report + Inventory Report • runs locally with SheetJS • data never leaves your browser",
-    "common.pick":"Choose file","common.required":"Required","common.ready":"Ready","common.choose":"Open",
+    "common.pick":"Choose file","common.required":"Required","common.ready":"Ready","common.choose":"Open","common.ok":"OK",
     "clear.btn":"Clear Data","clear.title":"Clear all data?","clear.msg":"Masters, uploaded files, and the generated report will be removed. This action cannot be undone.","clear.ok":"Clear Data","clear.cancel":"Cancel","clear.done":"All data cleared",
     "valid.title":"Wrong file format",
     "valid.item":"\"{0}\" is not a valid Item Master file.\nMissing column(s): {1}\n\nExpected the ITEM MASTER sheet with: EPOINT SKU, ProductCode, GDNo, Model_Name, RRPrice, Cost.",
@@ -841,7 +840,7 @@ const I18N = {
     "app.tagline":"แปลงไฟล์ข้อมูลดิบ → รายงานพร้อมใช้ • ประมวลผลในเครื่อง 100%",
     "app.credit":"พัฒนาโดยแผนก Intelligent Technology — <b>REV THAILAND</b>",
     "app.footer":"Sales Daily Report + Inventory Report • ประมวลผลในเครื่องด้วย SheetJS • ข้อมูลไม่ออกจากเบราว์เซอร์",
-    "common.pick":"เลือกไฟล์","common.required":"จำเป็น","common.ready":"พร้อม","common.choose":"เปิด",
+    "common.pick":"เลือกไฟล์","common.required":"จำเป็น","common.ready":"พร้อม","common.choose":"เปิด","common.ok":"ตกลง",
     "clear.btn":"ล้างข้อมูล","clear.title":"ล้างข้อมูลทั้งหมด?","clear.msg":"Master, ไฟล์ที่อัปโหลด และรายงานที่สร้างไว้จะถูกลบทั้งหมด — ไม่สามารถกู้คืนได้","clear.ok":"ล้างข้อมูล","clear.cancel":"ยกเลิก","clear.done":"ล้างข้อมูลทั้งหมดแล้ว",
     "valid.title":"รูปแบบไฟล์ไม่ถูกต้อง",
     "valid.item":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Item Master ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องเป็นชีต ITEM MASTER ที่มี: EPOINT SKU, ProductCode, GDNo, Model_Name, RRPrice, Cost",
@@ -914,19 +913,21 @@ function renderList(elId, files, removable, onRemove){
     if(removable){ const x=document.createElement("span"); x.className="x"; x.textContent="✕"; x.onclick=()=>onRemove(i); d.appendChild(x); }
     el.appendChild(d); });
 }
-// format-mismatch alert (uses native alert so the multi-line reason can't be missed)
-function alertBad(key, fileName, missing){ alert(t("valid.title")+"\n\n"+t(key, fileName, (missing||[]).join(", "))); }
+// format-mismatch alert -> centered popup modal (same style as Clear Data)
+function alertBad(key, fileName, missing){ alertModal(t("valid.title"), t(key, fileName, (missing||[]).join(", "))); }
 function renderRawList(){ renderList("#list-raw", rawArr(), true, i=>{ rawArr().splice(i,1); renderRawList(); refreshState(); persist(); }); }
 async function addRaw(fileList){
   const validate = state.mode==="sales" ? validateSalesFile : validateInventoryFile;
   const badKey   = state.mode==="sales" ? "valid.sales"     : "valid.inv";
+  const badFiles=[];
   for(const f of fileList){
     let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.readerr", f.name)); continue; }
     const aoa=sheetAoA(wb); const vr=validate(aoa);
-    if(!vr.ok){ alertBad(badKey, f.name, vr.missing); continue; }
+    if(!vr.ok){ badFiles.push(t(badKey, f.name, vr.missing.join(", "))); continue; }
     state.raw[state.mode].push({name:f.name, aoa});
   }
   renderRawList(); refreshState(); persist();
+  if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));  // one popup for all rejected files
 }
 async function setItem(f){
   let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.itemerr")); return; }
@@ -1201,17 +1202,41 @@ function applySnapshot(snap){
     if(state.report){ renderResults(state.report); $("#results").style.display="block"; }
   }
 }
-// centered confirm modal -> Promise<boolean> (Esc / backdrop / Cancel = false). Cancel focused by default (destructive-safe).
-function confirmModal(){
+// generic centered modal -> Promise (resolves with clicked button's value; Esc/backdrop -> o.esc)
+// o = {icon, accent:'danger'|'warn', title, message, buttons:[{label,value,kind,icon,focus}], esc}
+function showModal(o){
   return new Promise(res=>{
-    const ov=$("#confirm-modal"), ok=$("#cm-ok"), cancel=$("#cm-cancel");
-    function close(val){ ov.classList.remove("show"); document.removeEventListener("keydown",onKey); ov.onclick=ok.onclick=cancel.onclick=null; res(val); }
-    function onKey(e){ if(e.key==="Escape"){ e.preventDefault(); close(false); } }
-    ok.onclick=()=>close(true); cancel.onclick=()=>close(false);
-    ov.onclick=e=>{ if(e.target===ov) close(false); };
+    const ov=$("#modal"), card=ov.querySelector(".modal-card"), actions=$("#modal-actions");
+    $("#modal-ic").innerHTML=svgIcon(o.icon||"alert");
+    $("#modal-title").textContent=o.title||"";
+    $("#modal-msg").textContent=o.message||"";
+    card.className="modal-card"+(o.accent?" "+o.accent:"");
+    actions.innerHTML="";
+    const escVal=("esc" in o)?o.esc:false;
+    function close(v){ ov.classList.remove("show"); document.removeEventListener("keydown",onKey); ov.onclick=null; res(v); }
+    function onKey(e){ if(e.key==="Escape"){ e.preventDefault(); close(escVal); } }
+    let focusEl=null;
+    (o.buttons||[{label:t("common.ok"),value:true,kind:"primary"}]).forEach(b=>{
+      const el=document.createElement("button"); el.className="btn btn-"+(b.kind||"ghost");
+      el.innerHTML=(b.icon?svgIcon(b.icon):"")+"<span>"+esc(b.label)+"</span>";
+      el.onclick=()=>close(b.value); actions.appendChild(el); if(b.focus) focusEl=el;
+    });
+    if(!focusEl) focusEl=actions.lastChild;
+    ov.onclick=e=>{ if(e.target===ov) close(escVal); };
     ov.classList.add("show"); document.addEventListener("keydown",onKey);
-    setTimeout(()=>cancel.focus(),30);
+    setTimeout(()=>focusEl&&focusEl.focus(),30);
   });
+}
+// destructive confirm (Clear Data): Cancel focused by default, Esc/backdrop = false
+function confirmModal(){
+  return showModal({ icon:"trash", accent:"danger", title:t("clear.title"), message:t("clear.msg"),
+    esc:false, buttons:[ {label:t("clear.cancel"),value:false,kind:"ghost",focus:true},
+                         {label:t("clear.ok"),value:true,kind:"danger",icon:"trash"} ] });
+}
+// single-button alert (wrong file format) — same look as the confirm modal, warn accent
+function alertModal(title, message){
+  return showModal({ icon:"alert", accent:"warn", title, message, esc:true,
+    buttons:[ {label:t("common.ok"),value:true,kind:"primary",focus:true} ] });
 }
 async function clearData(){
   if(!(await confirmModal())) return;
