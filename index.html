@@ -440,7 +440,7 @@ function styleOf(p){ p=trim(p); const i=p.lastIndexOf("-"); return i>0 ? p.slice
 // readable style name from POS STOCKDESC: text before ';' (e.g. "CLIFTON 10;1162031-VCH-08.5B" -> "CLIFTON 10")
 function descName(d){ d=trim(d); const s=d.indexOf(";"); return s>=0 ? d.slice(0,s).trim() : d; }
 // strip invisible Unicode bidi/control marks that appear around sizes in some POS exports, then trim
-function cleanCode(s){ return trim(s).replace(/[‎‏‪-‮⁦-⁩]/g, ""); }
+function cleanCode(s){ return trim(String(s==null?"":s).replace(/[\u00A0\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g, "")); }
 // REV size display: drop leading zeros for purely-numeric sizes ("09" -> "9"); keep "L","8.5","10/11" as-is
 function sizeRev(s){ s=trim(s); return /^\d+$/.test(s) ? String(parseInt(s,10)) : s; }
 // store code from an inventory "Location :" header value like "HK01 - HOKA KLCC" -> "HK01"
@@ -494,16 +494,18 @@ function parseItemMaster(aoa){
   const byEpoint = new Map(), byProduct = new Map();
   for(let r=hi+1; r<aoa.length; r++){
     const row = aoa[r]; if(!row) continue;
-    const sku = trim(row[ix.epoint]); if(!sku) continue;
+    // clean invisible/bidi chars from join keys + code fields (some Master rows wrap the size segment in U+202D/U+202C)
+    const sku = cleanCode(row[ix.epoint]); if(!sku) continue;
+    const product = cleanCode(row[ix.product]);
     const rec = {
-      epoint: sku, product: trim(row[ix.product]), barcode: trim(row[ix.barcode]),
-      style: styleOf(row[ix.product]), gdno: trim(row[ix.gdno]),
+      epoint: sku, product: product, barcode: cleanCode(row[ix.barcode]),
+      style: styleOf(product), gdno: cleanCode(row[ix.gdno]),
       brand: trim(row[ix.brand]), width: trim(row[ix.width]), model: trim(row[ix.model]),
       cost: num(row[ix.cost]), price: num(row[ix.price]), category: trim(row[ix.category]),
       gender: trim(row[ix.gender]), types: trim(row[ix.types]), color: trim(row[ix.color]),
       pyear: row[ix.pyear], pseason: trim(row[ix.pseason]), collection: trim(row[ix.collection]),
-      rrp: num(row[ix.rrp]), subcat: trim(row[ix.subcat]), mstyle: trim(row[ix.mstyle]),
-      sizerev: trim(row[ix.sizerev])
+      rrp: num(row[ix.rrp]), subcat: trim(row[ix.subcat]), mstyle: cleanCode(row[ix.mstyle]),
+      sizerev: cleanCode(row[ix.sizerev])
     };
     if(!byEpoint.has(sku)) byEpoint.set(sku, rec);
     if(rec.product && !byProduct.has(rec.product)) byProduct.set(rec.product, rec);
@@ -554,7 +556,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
 
     for(let r=hi+1;r<aoa.length;r++){
       const row=aoa[r]; if(!row) continue;
-      const stock = trim(row[iSTOCK]);
+      const stock = cleanCode(row[iSTOCK]);
       if(!stock){ stat.blank++; continue; }
       stat.inputLines++;
       const itemNo = trim(row[iITEM]);
@@ -567,7 +569,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
 
       let im = itemMaster.byEpoint.get(stock);
       if(!im){ const desc = trim(row[iDESC]); const semi = desc.indexOf(";");
-        if(semi>=0){ const alt = desc.slice(semi+1).trim(); im = itemMaster.byEpoint.get(alt) || itemMaster.byProduct.get(alt); } }
+        if(semi>=0){ const alt = cleanCode(desc.slice(semi+1)); im = itemMaster.byEpoint.get(alt) || itemMaster.byProduct.get(alt); } }
       const qty = num(row[iQTY]); const net = num(row[iNET]); const storeCode = trim(row[iLOC]);
       const dt = parseDate(row[iDATE]);
       const loc = locMaster.map.get(storeCode) || {name:"", banner:""};
