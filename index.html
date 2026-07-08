@@ -116,6 +116,7 @@
   .brand-div{width:1px;align-self:stretch;background:rgba(255,255,255,.22);flex:none}
   .brand-txt{min-width:0}
   .brand-txt h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#fff}
+  .brand-txt h1 .ver{display:inline-block;margin-left:7px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--orange);background:rgba(243,113,33,.14);border:1px solid rgba(243,113,33,.45);border-radius:20px;vertical-align:middle;text-transform:none}
   .brand-txt p{margin:2px 0 0;font-size:12px;color:#cdd9e8;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .topright{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
   .langsw{display:flex;background:rgba(255,255,255,.12);border-radius:9px;padding:3px;border:1px solid rgba(255,255,255,.18);flex:none}
@@ -330,7 +331,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool</h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.0</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -573,7 +574,8 @@ function parseItemMaster(aoa){
     cost: col("Cost"), price: col("Price"), category: col("Category"), gender: col("Gender"),
     types: col("Types"), tech: col("Technology"), color: col("Color Description"),
     pyear: col("Product Year"), pseason: col("Product Season"), collection: col("Current Collection"),
-    rrp: col("RRPrice","RRP"), subcat: col("Sub Cat"), mstyle: col("Master Style"), sizerev: col("Size (REV)","Size(REV)")
+    rrp: col("RRPrice","RRP"), subcat: col("Sub Cat"), mstyle: col("Master Style"), sizerev: col("Size (REV)","Size(REV)"),
+    md: col("MD%","MD %","Markdown %","MD")
   };
   const byEpoint = new Map(), byProduct = new Map();
   for(let r=hi+1; r<aoa.length; r++){
@@ -589,7 +591,8 @@ function parseItemMaster(aoa){
       gender: trim(row[ix.gender]), types: trim(row[ix.types]), color: trim(row[ix.color]),
       pyear: row[ix.pyear], pseason: trim(row[ix.pseason]), collection: trim(row[ix.collection]),
       rrp: num(row[ix.rrp]), subcat: trim(row[ix.subcat]), mstyle: cleanCode(row[ix.mstyle]),
-      sizerev: cleanCode(row[ix.sizerev])
+      sizerev: cleanCode(row[ix.sizerev]),
+      md: ix.md>=0 ? (row[ix.md]==null?"":row[ix.md]) : ""   // MD% — Item Master col AG (absent today → blank, matches the sample)
     };
     if(!byEpoint.has(sku)) byEpoint.set(sku, rec);
     if(rec.product && !byProduct.has(rec.product)) byProduct.set(rec.product, rec);
@@ -714,10 +717,10 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
 }
 
 /* ---------- ONLINE (marketplace / BRP) sales transform ---------- */
-// brpFiles: [{name, aoa}] from the "BRP REPORT" sheet. Produces rows in the SAME 33-col
+// brpFiles: [{name, aoa}] from the "Order Breakdown" marketplace export. Produces rows in the SAME 33-col
 // OUT_COLS layout as transformSales() so online lines APPEND into one unified Sales report.
 // Decisions (2026-07-08, per user): Cost Per Unit = Item Master `Cost` (the Detail cost file was
-// dropped); Net Sales = Order Price + Seller Voucher (S+Z, excludes platform-funded mkt voucher);
+// dropped); Net Sales = Order Price + Seller Voucher + Seller Discount (S+Z+AC, excludes platform-funded mkt voucher);
 // Banner="ECOM", Store Code="ON01" (Location Master), Store Name = storefront (BRP col D);
 // keep every Order Status except Cancelled; TRANS. COUNT = 1 per Order ID.
 function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
@@ -746,9 +749,16 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
     if(hi<0) hi=0;
     const H = headerMap(aoa[hi]);
     const gi=(...n)=>{ for(const x of n){ const k=x.toUpperCase().replace(/\s+/g," "); if(k in H) return H[k]; } return -1; };
-    const iOID=gi("ORDER ID"), iMkt=gi("MARKETPLACE ORDER ID"), iStore=gi("STORE"), iSKU=gi("SKU CODE"), iName=gi("SKU NAME"),
-          iDate=gi("ORDER DATE"), iStatus=gi("ORDER STATUS"), iQty=gi("ORDER QUANTITY"),
-          iPrice=gi("ORDER PRICE (RM)","ORDER PRICE"), iSVou=gi("SELLER VOUCHER (RM)","SELLER VOUCHER");
+    // resolve by header NAME — "Order Breakdown" marketplace export layout
+    const iOID=gi("ORDER ID"),
+          iMkt=gi("MARKERPLACE ORDER NO.","MARKETPLACE ORDER NO.","MARKETPLACE ORDER NO"),
+          iStore=gi("STORE"),
+          iSKU=gi("MODEL"), iName=gi("PRODUCT"),
+          iDate=gi("ORDER DATE"), iStatus=gi("STATUS"),
+          iQty=gi("QUANTITY"),
+          iPrice=gi("PRODUCT AMOUNT (RM)","PRODUCT AMOUNT"),
+          iSVou=gi("SELLER VOUCHER (RM)","SELLER VOUCHER"),
+          iSDisc=gi("SELLER DISCOUNT (RM)","SELLER DISCOUNT");
 
     for(let r=hi+1; r<aoa.length; r++){
       const row=aoa[r]; if(!row) continue;
@@ -763,7 +773,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
       stat.lineItems++;
 
       const qty = num(row[iQty]);
-      const net = num(row[iPrice]) + num(row[iSVou]);   // Net Sales = Order Price + Seller Voucher
+      const net = num(row[iPrice]) + num(row[iSVou]) + num(row[iSDisc]);   // Net Sales = Order Price + Seller Voucher + Seller Discount (S+Z+AC)
       const dt  = parseDate(row[iDate]);
       const storeName = trim(row[iStore]);
       let tc=0; if(!seenTxn.has(oid)){ seenTxn.add(oid); tc=1; }  // 1 per Order ID
@@ -804,7 +814,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
 
 /* ========================= INVENTORY REPORT ========================= */
 const INV_OUT_COLS = ["Barcode","System SKU","STYLE","PRODUCT CODE","REV RIZE","Banner","Brand","Store Name",
-  "Gender","Category","Product Name","Current Season","Model Name","WIDTH","RRP","Cost","SOH","Total Cost","Total Retail"];
+  "Gender","Category","Sub Cat","Type","Master Style","Product Name","Current Season","Model Name","WIDTH","MD%","RRP","Cost","SOH","Total Cost","Total Retail"];
 
 // invFiles: [{name, aoa}] of the grouped "Status balance list" export
 // opts.soh: "nonzero" (default) | "all" | "positive"
@@ -854,13 +864,17 @@ function transformInventory(invFiles, itemMaster, locMaster, opts){
         stat.totalRetail += totalRetail;
         // PRODUCT CODE (col D) = Item Master ProductCode (col E); System SKU keeps the raw inv Stock code
         rows.push([ im.barcode, stock, im.gdno, (im.product||stock), sizeRev(im.sizerev),
-          loc.banner, im.brand, loc.name, im.gender, im.category, im.model, im.pseason, im.model, im.width,
+          loc.banner, im.brand, loc.name, im.gender, im.category,
+          im.subcat, im.types, im.mstyle,                       // NEW: Sub Cat / Type / Master Style
+          im.model, im.pseason, im.model, im.width, im.md,      // NEW: MD% (after WIDTH)
           rrp, cost, soh, totalCost, totalRetail ]);
       } else {
         stat.unmatched++; stat.unmatchedSOH += soh;
         unmatched.push([stock, trim(row[iDesc]), curLoc, soh, cost, totalCost]);
         const B="";
-        rows.push([ B, stock, B, stock, B, loc.banner, B, loc.name, B, B, B, B, B, B,
+        rows.push([ B, stock, B, stock, B, loc.banner, B, loc.name, B, B,
+          B, B, B,                    // Sub Cat / Type / Master Style (no master match)
+          B, B, B, B, B,              // Product Name / Season / Model / WIDTH / MD%
           B, cost, soh, totalCost, B ]);
       }
     }
@@ -906,11 +920,11 @@ function invAnalytics(rep){
   let totalCost=0, totalRetail=0, soh=0, lines=0, mCost=0, mRetail=0;
   const byStore=new Map(), byBrand=new Map(), byCat=new Map(), bySeason=new Map(), byStyle=new Map();
   for(const r of rep.rows){
-    const tcost=_n0(r[17]), tret=(r[18]===""?null:_n0(r[18])), s=_n0(r[16]);
+    const tcost=_n0(r[21]), tret=(r[22]===""?null:_n0(r[22])), s=_n0(r[20]);
     totalCost+=tcost; soh+=s; lines++;
     if(tret!=null){ totalRetail+=tret; mCost+=tcost; mRetail+=tret; }
     _add(byStore, r[7], tcost); _add(byBrand, r[6], tcost); _add(byCat, r[9], tcost);
-    _add(bySeason, r[11], tcost); _add(byStyle, (r[2]||r[1]), tcost);
+    _add(bySeason, r[14], tcost); _add(byStyle, (r[2]||r[1]), tcost);   // season now col 14
   }
   const season=[...bySeason.entries()].sort((a,b)=>seasonKey(a[0])-seasonKey(b[0])).map(([label,value])=>({label,value}));
   return { kpi:{ totalCost, totalRetail, soh, lines,
@@ -968,10 +982,10 @@ function validateBRPFile(aoa){
   const H=_hdrSet(aoa[hi]); const has=(...al)=>al.some(a=>H[a.toUpperCase().replace(/\s+/g," ")]);
   const missing=[];
   if(!has("Store")) missing.push("Store");
-  if(!has("SKU Code")) missing.push("SKU Code");
+  if(!has("Model")) missing.push("Model");
   if(!has("Order Date")) missing.push("Order Date");
-  if(!has("Order Quantity")) missing.push("Order Quantity");
-  if(!has("Order Price (RM)","Order Price")) missing.push("Order Price (RM)");
+  if(!has("Quantity")) missing.push("Quantity");
+  if(!has("Product Amount (RM)","Product Amount")) missing.push("Product Amount (RM)");
   return { ok:missing.length===0, missing };
 }
 
@@ -1032,8 +1046,8 @@ const I18N = {
     "valid.cash":"\"{0}\" is not a valid Cashier Master file.\nMissing column(s): {1}\n\nExpected the CASHIER sheet with: CASHIER, NAME.",
     "card.cash.title":"Cashier Master","card.cash.desc":"Optional — staff names for the Palexy export (sheet CASHIER)","common.optional":"Optional",
     "chip.cash":"Cashier Master: {0} staff","chip.online":"Online (BRP): {0} file(s)",
-    "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (sheet BRP REPORT); appended to this report",
-    "valid.brp":"\"{0}\" is not a valid BRP online-sales file.\nMissing column(s): {1}\n\nExpected the BRP REPORT sheet with: Order ID, Store, SKU Code, Order Date, Order Quantity, Order Price (RM).",
+    "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (Order Breakdown export); appended to this report",
+    "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
     "btn.palexy":"Export for Palexy","btn.pdf":"Export PDF",
     "toast.casherr":"Cannot read Cashier Master","toast.palexy":"Palexy report downloaded","toast.palexy.nocash":"Exported with cashier codes — upload Cashier Master to fill names",
     "ch.s.cashier":"Top Cashiers by Net Sales","ch.s.cashierBills":"Top Cashiers by Bills","pdf.generated":"Generated {0}",
@@ -1086,8 +1100,8 @@ const I18N = {
     "valid.cash":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Cashier Master ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องเป็นชีต CASHIER ที่มี: CASHIER, NAME",
     "card.cash.title":"Cashier Master","card.cash.desc":"ไม่บังคับ — ชื่อพนักงานสำหรับรายงาน Palexy (ชีต CASHIER)","common.optional":"ไม่บังคับ",
     "chip.cash":"Cashier Master: {0} คน","chip.online":"ออนไลน์ (BRP): {0} ไฟล์",
-    "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ชีต BRP REPORT) ต่อท้ายในรายงานนี้",
-    "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ BRP ออนไลน์ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องเป็นชีต BRP REPORT ที่มี: Order ID, Store, SKU Code, Order Date, Order Quantity, Order Price (RM)",
+    "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ไฟล์ Order Breakdown) ต่อท้ายในรายงานนี้",
+    "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
     "btn.palexy":"Export สำหรับ Palexy","btn.pdf":"บันทึก PDF",
     "toast.casherr":"อ่าน Cashier Master ไม่ได้","toast.palexy":"ดาวน์โหลดรายงาน Palexy แล้ว","toast.palexy.nocash":"Export แล้ว (มีรหัส Cashier) — อัปโหลด Cashier Master เพื่อเติมชื่อ",
     "ch.s.cashier":"พนักงานขายดี (ตามยอดขายสุทธิ)","ch.s.cashierBills":"พนักงานทำบิลมากสุด (จำนวนบิล)","pdf.generated":"สร้างเมื่อ {0}",
@@ -1407,9 +1421,10 @@ function renderInv(rep){
     + chartPanel("award",t("ch.i.top"),"Top 10",lollipop(a.topStyles,{money:true,limit:10}));
   renderUnmatched(rep,"inv");
   $("#th-prev").innerHTML="<tr>"+INV_OUT_COLS.map(c=>`<th>${c}</th>`).join("")+"</tr>";
-  const moneyIx=new Set([14,15,17,18]);
+  const moneyIx=new Set([18,19,21,22]);
   $("#tb-prev").innerHTML = rep.rows.slice(0,50).map(r=>"<tr>"+r.map((v,i)=>{ let d=v;
-    if(moneyIx.has(i)&&v!=="") d=fmtMoney(v); else if(i===16&&v!=="") d=fmtInt(v);
+    if(moneyIx.has(i)&&v!=="") d=fmtMoney(v); else if(i===20&&v!=="") d=fmtInt(v);
+    else if(i===17&&v!==""&&!isNaN(v)) d=(Math.round(Number(v)*10000)/100)+"%";   // MD% stored as fraction (0.3 -> 30%)
     return `<td class="${typeof v==="number"?"num":""}">${d===""||d==null?"":esc(d)}</td>`; }).join("")+"</tr>").join("");
 }
 function renderUnmatched(rep,mode){
@@ -1441,7 +1456,7 @@ function exportXlsx(){
   const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
   for(let r=1;r<=last;r++){
     if(state.mode==="sales"){ setZ(r,2,"yyyy-mm-dd"); [23,24,27,28,29].forEach(c=>setZ(r,c,"#,##0.00")); [30,31].forEach(c=>setZ(r,c,"0.00%")); setZ(r,25,"#,##0.####"); setZ(r,32,"0"); }
-    else { [14,15,17,18].forEach(c=>setZ(r,c,"#,##0.00")); setZ(r,16,"#,##0"); }
+    else { [18,19,21,22].forEach(c=>setZ(r,c,"#,##0.00")); setZ(r,20,"#,##0"); setZ(r,17,"0.##%"); }
   }
   ws["!cols"]=COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!freeze"]={xSplit:0,ySplit:1};
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, cfg.reportSheet);
