@@ -777,7 +777,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
       const dt  = parseDate(row[iDate]);
       const storeName = trim(row[iStore]);
       let tc=0; if(!seenTxn.has(oid)){ seenTxn.add(oid); tc=1; }  // 1 per Order ID
-      const head = [ oid, "C",
+      const head = [ oid, "",   // Entry Type left blank — same as physical (transformSales)
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
         banner, storeCode, storeName ];
 
