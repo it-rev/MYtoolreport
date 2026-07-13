@@ -813,7 +813,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
 }
 
 /* ========================= INVENTORY REPORT ========================= */
-const INV_OUT_COLS = ["Barcode","System SKU","STYLE","PRODUCT CODE","REV RIZE","Banner","Brand","Store Name",
+const INV_OUT_COLS = ["Barcode","System SKU","STYLE","PRODUCT CODE","REV RIZE","Banner","Brand","Store Code","Store Name",
   "Gender","Category","Sub Cat","Type","Master Style","Product Name","Current Season","Model Name","WIDTH","MD%","RRP","Cost","SOH","Total Cost","Total Retail"];
 
 // invFiles: [{name, aoa}] of the grouped "Status balance list" export
@@ -864,15 +864,15 @@ function transformInventory(invFiles, itemMaster, locMaster, opts){
         stat.totalRetail += totalRetail;
         // PRODUCT CODE (col D) = Item Master ProductCode (col E); System SKU keeps the raw inv Stock code
         rows.push([ im.barcode, stock, im.gdno, (im.product||stock), sizeRev(im.sizerev),
-          loc.banner, im.brand, loc.name, im.gender, im.category,
-          im.subcat, im.types, im.mstyle,                       // NEW: Sub Cat / Type / Master Style
-          im.model, im.pseason, im.model, im.width, im.md,      // NEW: MD% (after WIDTH)
+          loc.banner, im.brand, curLoc, loc.name, im.gender, im.category,   // Store Code = curLoc (before Store Name)
+          im.subcat, im.types, im.mstyle,                       // Sub Cat / Type / Master Style
+          im.model, im.pseason, im.model, im.width, im.md,      // MD% (after WIDTH)
           rrp, cost, soh, totalCost, totalRetail ]);
       } else {
         stat.unmatched++; stat.unmatchedSOH += soh;
         unmatched.push([stock, trim(row[iDesc]), curLoc, soh, cost, totalCost]);
         const B="";
-        rows.push([ B, stock, B, stock, B, loc.banner, B, loc.name, B, B,
+        rows.push([ B, stock, B, stock, B, loc.banner, B, curLoc, loc.name, B, B,   // Store Code = curLoc
           B, B, B,                    // Sub Cat / Type / Master Style (no master match)
           B, B, B, B, B,              // Product Name / Season / Model / WIDTH / MD%
           B, cost, soh, totalCost, B ]);
@@ -920,11 +920,11 @@ function invAnalytics(rep){
   let totalCost=0, totalRetail=0, soh=0, lines=0, mCost=0, mRetail=0;
   const byStore=new Map(), byBrand=new Map(), byCat=new Map(), bySeason=new Map(), byStyle=new Map();
   for(const r of rep.rows){
-    const tcost=_n0(r[21]), tret=(r[22]===""?null:_n0(r[22])), s=_n0(r[20]);
+    const tcost=_n0(r[22]), tret=(r[23]===""?null:_n0(r[23])), s=_n0(r[21]);
     totalCost+=tcost; soh+=s; lines++;
     if(tret!=null){ totalRetail+=tret; mCost+=tcost; mRetail+=tret; }
-    _add(byStore, r[7], tcost); _add(byBrand, r[6], tcost); _add(byCat, r[9], tcost);
-    _add(bySeason, r[14], tcost); _add(byStyle, (r[2]||r[1]), tcost);   // season now col 14
+    _add(byStore, r[8], tcost); _add(byBrand, r[6], tcost); _add(byCat, r[10], tcost);
+    _add(bySeason, r[15], tcost); _add(byStyle, (r[2]||r[1]), tcost);   // +1 shift after Store Code insert
   }
   const season=[...bySeason.entries()].sort((a,b)=>seasonKey(a[0])-seasonKey(b[0])).map(([label,value])=>({label,value}));
   return { kpi:{ totalCost, totalRetail, soh, lines,
@@ -1421,10 +1421,10 @@ function renderInv(rep){
     + chartPanel("award",t("ch.i.top"),"Top 10",lollipop(a.topStyles,{money:true,limit:10}));
   renderUnmatched(rep,"inv");
   $("#th-prev").innerHTML="<tr>"+INV_OUT_COLS.map(c=>`<th>${c}</th>`).join("")+"</tr>";
-  const moneyIx=new Set([18,19,21,22]);
+  const moneyIx=new Set([19,20,22,23]);
   $("#tb-prev").innerHTML = rep.rows.slice(0,50).map(r=>"<tr>"+r.map((v,i)=>{ let d=v;
-    if(moneyIx.has(i)&&v!=="") d=fmtMoney(v); else if(i===20&&v!=="") d=fmtInt(v);
-    else if(i===17&&v!==""&&!isNaN(v)) d=(Math.round(Number(v)*10000)/100)+"%";   // MD% stored as fraction (0.3 -> 30%)
+    if(moneyIx.has(i)&&v!=="") d=fmtMoney(v); else if(i===21&&v!=="") d=fmtInt(v);
+    else if(i===18&&v!==""&&!isNaN(v)) d=(Math.round(Number(v)*10000)/100)+"%";   // MD% stored as fraction (0.3 -> 30%)
     return `<td class="${typeof v==="number"?"num":""}">${d===""||d==null?"":esc(d)}</td>`; }).join("")+"</tr>").join("");
 }
 function renderUnmatched(rep,mode){
@@ -1456,7 +1456,7 @@ function exportXlsx(){
   const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
   for(let r=1;r<=last;r++){
     if(state.mode==="sales"){ setZ(r,2,"yyyy-mm-dd"); [23,24,27,28,29].forEach(c=>setZ(r,c,"#,##0.00")); [30,31].forEach(c=>setZ(r,c,"0.00%")); setZ(r,25,"#,##0.####"); setZ(r,32,"0"); }
-    else { [18,19,21,22].forEach(c=>setZ(r,c,"#,##0.00")); setZ(r,20,"#,##0"); setZ(r,17,"0.##%"); }
+    else { [19,20,22,23].forEach(c=>setZ(r,c,"#,##0.00")); setZ(r,21,"#,##0"); setZ(r,18,"0.##%"); }
   }
   ws["!cols"]=COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!freeze"]={xSplit:0,ySplit:1};
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, cfg.reportSheet);
