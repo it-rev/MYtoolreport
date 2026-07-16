@@ -628,7 +628,7 @@ function parseCashierMaster(aoa){
 const OUT_COLS = ["Transaction Number","Entry Type","Date","Year","Month","Week","Day","Banner","Store Code",
   "Store Name","STYLE CODE","STOCK CODE","Style Name","Color Desc","Width","Brand","Gender","Product Master Style",
   "Category","Collection","Activity","Product Year","Product Season","Retail Price","Cost Per Unit","Sold Qty",
-  "Net Sales","Org Sold","Sold COGS","GP$","Discount %","Margin%","TRANS. COUNT"];
+  "Net Sales","Org Sold","Sold COGS","GP$","Discount %","Margin%","TRANS. COUNT","CUST_ID","CUST_NAME"];
 // Palexy export = the 33 Sales columns + Cashier Code (col AH, idx 33) + Cashier Name (col AI, idx 34)
 const PALEXY_COLS = OUT_COLS.concat(["Cashier Code","Cashier Name"]);
 
@@ -656,7 +656,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
     const gi = (...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
     const iSALES=gi("SALES"), iDATE=gi("DATE"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
           iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"),
-          iTRANS=gi("TRANSACT"), iCASH=gi("CASHIER");
+          iTRANS=gi("TRANSACT"), iCASH=gi("CASHIER"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME");
 
     for(let r=hi+1;r<aoa.length;r++){
       const row=aoa[r]; if(!row) continue;
@@ -684,21 +684,23 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         loc.banner, storeCode, loc.name ];
       const cashCode = cleanCode(row[iCASH]);                       // raw CASHIER code (col E)
       const cashName = cashMap ? (cashMap.get(cashCode) || "") : ""; // name from Cashier Master (blank if terminal/no match)
+      const custId = iCID>=0 ? trim(row[iCID]) : "";      // CUST_ID from raw e-point (guard: absent -> blank)
+      const custName = iCNAME>=0 ? trim(row[iCNAME]) : "";
 
       stat.netSales += net;
       if(im){
         stat.matched++;
         const retail = im.rrp, cost = im.cost;
         const orgSold = retail*qty, cogs = cost*qty, gp = net - cogs;
-        const discPct = retail ? (retail-cost)/retail : "";
-        const marginPct = net ? gp/net : "";
+        const discPct = orgSold ? (orgSold-net)/orgSold : "";   // (Org Sold - Net Sales)/Org Sold
+        const marginPct = net ? (net-cogs)/net : "";             // (Net Sales - Sold COGS)/Net Sales
         rows.push(head.concat([
           im.style, im.product, im.model,
           im.color, im.width, im.brand, im.gender,
           im.mstyle, im.category, im.types, im.subcat,
           im.pyear, im.pseason,
           retail, cost, qty, net, orgSold, cogs, gp,
-          discPct, marginPct, tc ]));
+          discPct, marginPct, tc, custId, custName ]));
       } else {
         // no master match: fill what we can from the raw POS line (style code, stock, name) so the
         // row is identifiable; master-derived & price/margin columns stay blank. Also listed in Unmatched.
@@ -708,7 +710,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         rows.push(head.concat([
           styleOf(stock), stock, descName(row[iDESC]),
           B, B, B, B,  B, B, B, B,  B, B,
-          B, B, qty, net, B, B, B,  B, B, tc ]));
+          B, B, qty, net, B, B, B,  B, B, tc, custId, custName ]));
       }
       cashier.push([cashCode, cashName]);   // parallel to rows[] — merged only into the Palexy export
     }
@@ -758,7 +760,8 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
           iQty=gi("QUANTITY"),
           iPrice=gi("PRODUCT AMOUNT (RM)","PRODUCT AMOUNT"),
           iSVou=gi("SELLER VOUCHER (RM)","SELLER VOUCHER"),
-          iSDisc=gi("SELLER DISCOUNT (RM)","SELLER DISCOUNT");
+          iSDisc=gi("SELLER DISCOUNT (RM)","SELLER DISCOUNT"),
+          iCName=gi("CUSTOMER NAME");
 
     for(let r=hi+1; r<aoa.length; r++){
       const row=aoa[r]; if(!row) continue;
@@ -776,6 +779,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
       const net = num(row[iPrice]) + num(row[iSVou]) + num(row[iSDisc]);   // Net Sales = Order Price + Seller Voucher + Seller Discount (S+Z+AC)
       const dt  = parseDate(row[iDate]);
       const storeName = trim(row[iStore]);
+      const custName = iCName>=0 ? trim(row[iCName]) : "";   // CUST_NAME from Order Breakdown "Customer Name" (CUST_ID left blank)
       let tc=0; if(!seenTxn.has(oid)){ seenTxn.add(oid); tc=1; }  // 1 per Order ID
       const head = [ oid, "",   // Entry Type left blank — same as physical (transformSales)
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
@@ -787,15 +791,15 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
         stat.matched++;
         const retail=im.rrp, cost=im.cost;
         const orgSold=retail*qty, cogs=cost*qty, gp=net-cogs;
-        const discPct = retail ? (retail-cost)/retail : "";
-        const marginPct = net ? gp/net : "";
+        const discPct = orgSold ? (orgSold-net)/orgSold : "";   // (Org Sold - Net Sales)/Org Sold
+        const marginPct = net ? (net-cogs)/net : "";             // (Net Sales - Sold COGS)/Net Sales
         rows.push(head.concat([
           im.style, im.product, im.model,
           im.color, im.width, im.brand, im.gender,
           im.mstyle, im.category, im.types, im.subcat,
           im.pyear, im.pseason,
           retail, cost, qty, net, orgSold, cogs, gp,
-          discPct, marginPct, tc ]));
+          discPct, marginPct, tc, "", custName ]));
       } else {
         // no master match: keep row (lossless) with SKU + name from BRP; Master/price cols blank; list it.
         stat.unmatched++; stat.unmatchedNet += net;
@@ -804,7 +808,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
         rows.push(head.concat([
           styleOf(sku), sku, trim(row[iName]),
           B,B,B,B, B,B,B,B, B,B,
-          B,B, qty, net, B,B,B, B,B, tc ]));
+          B,B, qty, net, B,B,B, B,B, tc, "", custName ]));
       }
       cashier.push(["",""]);   // online has no cashier — keep parallel to rows[] for Palexy export
     }
@@ -902,7 +906,7 @@ function salesAnalytics(rep){
     if(r[27]!=="") orgSold+=_n0(r[27]);
     if(r[29]!==""){ gp+=_n0(r[29]); matchedNet+=net; }
     _add(byStore, r[8], net); _add(byBrand, r[15], net); _add(byCat, r[18], net);
-    _add(byStyle, (r[10]||r[12]||r[11]), net);
+    _add(byStyle, (r[12]||r[10]||r[11]), net);   // Top Styles labelled by Style Name (fallback code)
     if(r[2]!=="") _add(byDate, serialDate(r[2]), net);
     const c=cash[i], cName=c?(c[1]||c[0]):"";           // cashier name (fallback code) if present
     if(cName){ _add(byCashier, cName, net); byCashierBills.set(cName,(byCashierBills.get(cName)||0)+tc); }
@@ -1390,7 +1394,7 @@ function renderSales(rep){
   ]);
   let charts = chartPanel("store",t("ch.s.store"),"",columnChart(a.byStore,{money:true,limit:12}))
     + chartPanel("pie",t("ch.s.cat"),"",donut(a.byCat,{money:true}))
-    + chartPanel("layers",t("ch.s.brand"),"",treemap(a.byBrand,{money:true}))
+    + chartPanel("layers",t("ch.s.brand"),"",leaderboard(a.byBrand,{money:true,limit:12}))
     + chartPanel("award",t("ch.s.top"),"Top 10",lollipop(a.topStyles,{money:true,limit:10}));
   if(state.cashier && a.topCashiers && a.topCashiers.length){
     charts += chartPanel("users",t("ch.s.cashier"),"Top 10",leaderboard(a.topCashiers,{money:true,limit:10}));
@@ -1476,7 +1480,7 @@ function exportPalexy(){
   const ws=XLSX.utils.aoa_to_sheet([PALEXY_COLS, ...data]); const last=data.length;
   const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
   for(let r=1;r<=last;r++){ setZ(r,2,"yyyy-mm-dd"); [23,24,27,28,29].forEach(c=>setZ(r,c,"#,##0.00")); [30,31].forEach(c=>setZ(r,c,"0.00%")); setZ(r,25,"#,##0.####"); setZ(r,32,"0"); }
-  ws["!cols"]=PALEXY_COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!cols"][34].wch=32; ws["!freeze"]={xSplit:0,ySplit:1};
+  ws["!cols"]=PALEXY_COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!cols"][36].wch=32; ws["!freeze"]={xSplit:0,ySplit:1};
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sales Report");
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   XLSX.writeFile(wb, `Palexy Sales Report_${tag}.xlsx`, {compression:true});
