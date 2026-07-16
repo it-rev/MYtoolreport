@@ -331,7 +331,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.1</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.2</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -655,7 +655,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
     const H = headerMap(aoa[hi]);
     const gi = (...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
     const iSALES=gi("SALES"), iDATE=gi("DATE"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
-          iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"),
+          iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iPRICE=gi("PRICE"), iNETDISC=gi("MTD2_NETDISC"),
           iTRANS=gi("TRANSACT"), iCASH=gi("CASHIER"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME");
 
     for(let r=hi+1;r<aoa.length;r++){
@@ -675,6 +675,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       if(!im){ const desc = trim(row[iDESC]); const semi = desc.indexOf(";");
         if(semi>=0){ const alt = cleanCode(desc.slice(semi+1)); im = itemMaster.byEpoint.get(alt) || itemMaster.byProduct.get(alt); } }
       const qty = num(row[iQTY]); const net = num(row[iNET]); const storeCode = trim(row[iLOC]);
+      const price = num(row[iPRICE]); const netDisc = num(row[iNETDISC]);   // raw PRICE (tag price) + MTD2_NETDISC (discount amount)
       const dt = parseDate(row[iDATE]);
       const loc = locMaster.map.get(storeCode) || {name:"", banner:""};
       const txn = trim(row[iSALES]);
@@ -684,16 +685,16 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         loc.banner, storeCode, loc.name ];
       const cashCode = cleanCode(row[iCASH]);                       // raw CASHIER code (col E)
       const cashName = cashMap ? (cashMap.get(cashCode) || "") : ""; // name from Cashier Master (blank if terminal/no match)
-      const custId = iCID>=0 ? trim(row[iCID]) : "";      // CUST_ID from raw e-point (guard: absent -> blank)
-      const custName = iCNAME>=0 ? trim(row[iCNAME]) : "";
+      const custId = trim(row[iCID]);        // required columns (enforced by validateSalesFile) — no guard
+      const custName = trim(row[iCNAME]);
 
       stat.netSales += net;
       if(im){
         stat.matched++;
-        const retail = im.rrp, cost = im.cost;
+        const retail = price, cost = im.cost;   // Retail Price = raw PRICE (tag price); Cost from Item Master
         const orgSold = retail*qty, cogs = cost*qty, gp = net - cogs;
-        const discPct = orgSold ? (orgSold-net)/orgSold : "";   // (Org Sold - Net Sales)/Org Sold
-        const marginPct = net ? (net-cogs)/net : "";             // (Net Sales - Sold COGS)/Net Sales
+        const discPct = orgSold ? netDisc/orgSold : "";   // MTD2_NETDISC / Org Sold
+        const marginPct = net ? (net-cogs)/net : "";       // (Net Sales - Sold COGS)/Net Sales
         rows.push(head.concat([
           im.style, im.product, im.model,
           im.color, im.width, im.brand, im.gender,
@@ -707,10 +708,11 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         stat.unmatched++; stat.unmatchedNet += net;
         unmatched.push([stock, trim(row[iDESC]), storeCode, qty, net]);
         const B="";
+        const uOrg = price*qty;   // raw-derived cols available even without a master match
         rows.push(head.concat([
           styleOf(stock), stock, descName(row[iDESC]),
           B, B, B, B,  B, B, B, B,  B, B,
-          B, B, qty, net, B, B, B,  B, B, tc, custId, custName ]));
+          price, B, qty, net, uOrg, B, B,  (uOrg?netDisc/uOrg:""), B, tc, custId, custName ]));
       }
       cashier.push([cashCode, cashName]);   // parallel to rows[] — merged only into the Palexy export
     }
@@ -962,7 +964,7 @@ function validateSalesFile(aoa){
   const hi = (aoa||[]).findIndex(r => r && r.some(c => trim(c).toUpperCase()==="SALES"));
   if(hi<0) return { ok:false, missing:["SALES"] };
   const H=_hdrSet(aoa[hi]);
-  const need=["SALES","DATE","LOCATION","ITEM_NO","STOCK","STOCKDESC","QUANTITY","MTD2_NETAMT"];
+  const need=["SALES","DATE","LOCATION","ITEM_NO","STOCK","STOCKDESC","QUANTITY","MTD2_NETAMT","CUST_ID","CUST_NAME"];
   const missing=need.filter(n=>!H[n]);
   return { ok:missing.length===0, missing };
 }
