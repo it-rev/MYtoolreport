@@ -331,7 +331,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.2</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.3</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -628,7 +628,7 @@ function parseCashierMaster(aoa){
 const OUT_COLS = ["Transaction Number","Entry Type","Date","Year","Month","Week","Day","Banner","Store Code",
   "Store Name","STYLE CODE","STOCK CODE","Style Name","Color Desc","Width","Brand","Gender","Product Master Style",
   "Category","Collection","Activity","Product Year","Product Season","Retail Price","Cost Per Unit","Sold Qty",
-  "Net Sales","Org Sold","Sold COGS","GP$","Discount %","Margin%","TRANS. COUNT","CUST_ID","CUST_NAME"];
+  "Net Sales","Gross Sales","Sold COGS","GP$","Discount %","Margin%","TRANS. COUNT","CUST_ID","CUST_NAME"];
 // Palexy export = the 33 Sales columns + Cashier Code (col AH, idx 33) + Cashier Name (col AI, idx 34)
 const PALEXY_COLS = OUT_COLS.concat(["Cashier Code","Cashier Name"]);
 
@@ -680,18 +680,20 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       const loc = locMaster.map.get(storeCode) || {name:"", banner:""};
       const txn = trim(row[iSALES]);
       let tc = 0; if(!seenTxn.has(txn)){ seenTxn.add(txn); tc = 1; }
+      const custId = trim(row[iCID]);        // required columns (enforced by validateSalesFile)
+      const custName = trim(row[iCNAME]);
+      // WAREHOUSE-banner stores (WH01/02/03): show the customer name in Store Name (wholesale/warehouse sales)
+      const storeName = (loc.banner && loc.banner.toUpperCase()==="WAREHOUSE") ? custName : loc.name;
       const head = [ txn, "",
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
-        loc.banner, storeCode, loc.name ];
+        loc.banner, storeCode, storeName ];
       const cashCode = cleanCode(row[iCASH]);                       // raw CASHIER code (col E)
       const cashName = cashMap ? (cashMap.get(cashCode) || "") : ""; // name from Cashier Master (blank if terminal/no match)
-      const custId = trim(row[iCID]);        // required columns (enforced by validateSalesFile) — no guard
-      const custName = trim(row[iCNAME]);
 
       stat.netSales += net;
       if(im){
         stat.matched++;
-        const retail = price, cost = im.cost;   // Retail Price = raw PRICE (tag price); Cost from Item Master
+        const retail = im.rrp, cost = im.cost;   // Retail Price from Item Master (RRPrice)
         const orgSold = retail*qty, cogs = cost*qty, gp = net - cogs;
         const discPct = orgSold ? netDisc/orgSold : "";   // MTD2_NETDISC / Org Sold
         const marginPct = net ? (net-cogs)/net : "";       // (Net Sales - Sold COGS)/Net Sales
@@ -708,11 +710,10 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         stat.unmatched++; stat.unmatchedNet += net;
         unmatched.push([stock, trim(row[iDESC]), storeCode, qty, net]);
         const B="";
-        const uOrg = price*qty;   // raw-derived cols available even without a master match
         rows.push(head.concat([
           styleOf(stock), stock, descName(row[iDESC]),
           B, B, B, B,  B, B, B, B,  B, B,
-          price, B, qty, net, uOrg, B, B,  (uOrg?netDisc/uOrg:""), B, tc, custId, custName ]));
+          B, B, qty, net, B, B, B,  B, B, tc, custId, custName ]));
       }
       cashier.push([cashCode, cashName]);   // parallel to rows[] — merged only into the Palexy export
     }
