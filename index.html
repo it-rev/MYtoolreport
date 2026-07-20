@@ -331,7 +331,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.3</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.4</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -682,11 +682,13 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       let tc = 0; if(!seenTxn.has(txn)){ seenTxn.add(txn); tc = 1; }
       const custId = trim(row[iCID]);        // required columns (enforced by validateSalesFile)
       const custName = trim(row[iCNAME]);
-      // WAREHOUSE-banner stores (WH01/02/03): show the customer name in Store Name (wholesale/warehouse sales)
-      const storeName = (loc.banner && loc.banner.toUpperCase()==="WAREHOUSE") ? custName : loc.name;
+      // WAREHOUSE-banner stores (WH01/02/03): CUST_ID -> Store Code, CUST_NAME -> Store Name (wholesale/warehouse sales)
+      const isWH = !!(loc.banner && loc.banner.toUpperCase()==="WAREHOUSE");
+      const storeCodeOut = isWH ? custId : storeCode;
+      const storeName = isWH ? custName : loc.name;
       const head = [ txn, "",
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
-        loc.banner, storeCode, storeName ];
+        loc.banner, storeCodeOut, storeName ];
       const cashCode = cleanCode(row[iCASH]);                       // raw CASHIER code (col E)
       const cashName = cashMap ? (cashMap.get(cashCode) || "") : ""; // name from Cashier Master (blank if terminal/no match)
 
