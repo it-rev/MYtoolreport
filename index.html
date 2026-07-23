@@ -142,7 +142,7 @@
   .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
   .grid1{display:grid;grid-template-columns:1fr;gap:16px;max-width:560px}
-  .grid1.pair{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none}
+  .grid1.pair{grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;align-items:stretch}
   @media(max-width:780px){.grid1.pair{grid-template-columns:1fr}}
   @media(max-width:900px){.grid3{grid-template-columns:1fr}}
   @media(max-width:780px){.grid2{grid-template-columns:1fr}}
@@ -331,7 +331,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.5</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.6</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -422,6 +422,12 @@
         <div class="d" data-i18n="online.desc"></div>
         <label><span class="btn-pick"><span data-icon="upload"></span><span data-i18n="common.pick"></span></span><input type="file" id="in-online" multiple accept=".xlsx,.xls"></label>
         <div class="filelist" id="list-online"></div>
+        <div id="drop-shopify" style="margin-top:16px;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:10px">
+          <div class="t" style="font-size:12.5px;font-weight:700" data-i18n="shopify.title"></div>
+          <div class="d" style="margin:3px 0 10px" data-i18n="shopify.desc"></div>
+          <label><span class="btn-pick"><span data-icon="upload"></span><span data-i18n="common.pick"></span></span><input type="file" id="in-shopify" multiple accept=".csv,.xlsx,.xls"></label>
+          <div class="filelist" id="list-shopify"></div>
+        </div>
       </div>
     </div>
 
@@ -429,8 +435,9 @@
     <div class="actionbar">
       <button class="btn btn-primary" id="btn-run" disabled><span data-icon="zap"></span><span data-i18n="btn.run"></span></button>
       <button class="btn btn-ghost" id="btn-export" disabled><span data-icon="download"></span><span data-i18n="btn.export"></span></button>
-      <button class="btn btn-ghost" id="btn-palexy" disabled style="display:none"><span data-icon="users"></span><span data-i18n="btn.palexy"></span></button>
       <button class="btn btn-ghost" id="btn-pdf" disabled><span data-icon="file"></span><span data-i18n="btn.pdf"></span></button>
+      <button class="btn btn-ghost" id="btn-palexy" disabled style="display:none"><span data-icon="users"></span><span data-i18n="btn.palexy"></span></button>
+      <button class="btn btn-ghost" id="btn-brpupd" disabled style="display:none"><span data-icon="download"></span><span data-i18n="btn.brpupd"></span></button>
       <label id="soh-wrap" style="display:none;font-size:12.5px;color:var(--muted);font-weight:600">
         <span data-i18n="soh.label"></span>
         <select id="soh-filter">
@@ -998,9 +1005,62 @@ function validateBRPFile(aoa){
   return { ok:missing.length===0, missing };
 }
 
+/* ========================= SHOPIFY BRP INFO UPDATE ========================= */
+// Shopify "orders_export.csv": header row 0; Name=order no (has '#'), 'Paid at' + 'Fulfilled at' = timestamps.
+// Order-level fields sit on the FIRST row of each order; line-item rows have a blank Name (skipped).
+function shopDate(v){
+  if(v==null||v==="") return "";
+  if(v instanceof Date) return String(v.getDate()).padStart(2,"0")+"/"+String(v.getMonth()+1).padStart(2,"0")+"/"+v.getFullYear();
+  const s=String(v); let m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[3]+"/"+m[2]+"/"+m[1];  // ISO -> DD/MM/YYYY
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return String(+m[1]).padStart(2,"0")+"/"+String(+m[2]).padStart(2,"0")+"/"+m[3];
+  return "";
+}
+// -> Map(orderNo(no '#') -> {paid, deliv} as DD/MM/YYYY)
+function parseShopifyOrders(aoa){
+  const map=new Map(); if(!aoa||!aoa.length) return map;
+  const H=headerMap(aoa[0]);
+  const gi=(...n)=>{ for(const x of n){ const k=x.toUpperCase().replace(/\s+/g," "); if(k in H) return H[k]; } return -1; };
+  const iName=gi("Name"), iPaid=gi("Paid at"), iFul=gi("Fulfilled at");
+  for(let r=1;r<aoa.length;r++){ const row=aoa[r]; if(!row) continue;
+    const name=trim(row[iName]); if(!name) continue;                 // skip line-item rows (blank Name)
+    const key=name.replace(/^#/,"").trim();
+    if(!map.has(key)) map.set(key, { paid: shopDate(row[iPaid]), deliv: shopDate(row[iFul]) });
+  }
+  return map;
+}
+// Fill Paid Date + Delivery Date on Shopify BRP rows from the two store maps. Returns {header, rows, stat}.
+// maps = { hoka:Map, rev:Map }. Match key = Marketplace Order No (strip '#'); store routed by BRP Store text.
+function enrichBrpShopify(brpAoa, maps){
+  const aoa=brpAoa; maps=maps||{};
+  let hi=aoa.findIndex(r => r && r.some(c => trim(c).toUpperCase()==="ORDER ID")); if(hi<0) hi=0;
+  const H=headerMap(aoa[hi]);
+  const gi=(...n)=>{ for(const x of n){ const k=x.toUpperCase().replace(/\s+/g," "); if(k in H) return H[k]; } return -1; };
+  const iOID=gi("ORDER ID"),
+        iMkt=gi("MARKERPLACE ORDER NO.","MARKETPLACE ORDER NO.","MARKETPLACE ORDER NO"),
+        iStore=gi("STORE"), iPaid=gi("PAID DATE"), iDeliv=gi("DELIVERY DATE");
+  const header=aoa[hi].slice(); const rows=[];
+  let stat={ dataRows:0, shopify:0, matched:0 };
+  for(let r=hi+1;r<aoa.length;r++){ const src=aoa[r]; if(!src) continue;
+    if(trim(src[iOID])==="") continue;
+    stat.dataRows++;
+    const out=src.slice();
+    const st=trim(src[iStore]).toLowerCase();
+    if(st.indexOf("shopify")>=0){
+      stat.shopify++;
+      const mp = st.indexOf("hoka")>=0 ? maps.hoka : (st.indexOf("rev")>=0 ? maps.rev : null);
+      const key = trim(src[iMkt]).replace(/^#/,"").trim();
+      const hit = (mp && key) ? mp.get(key) : null;
+      if(hit){ stat.matched++; if(iPaid>=0) out[iPaid]=hit.paid; if(iDeliv>=0) out[iDeliv]=hit.deliv; }
+    }
+    rows.push(out);
+  }
+  return { header, rows, stat };
+}
+
 const API = { trim, num, excelSerial, isoWeek, parseDate, headerMap, parseItemMaster, parseLocationMaster, parseCashierMaster,
   transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, serialDate, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
-  validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile };
+  validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile,
+  parseShopifyOrders, enrichBrpShopify };
 if(typeof module!=="undefined" && module.exports) module.exports = API;
 global.REVSales = API;
 })(typeof window!=="undefined" ? window : globalThis);
@@ -1010,7 +1070,7 @@ global.REVSales = API;
 /* ============== REV Report Tool — UI layer ============== */
 const REV = window.REVSales;
 const { trim, num, parseItemMaster, parseLocationMaster, parseCashierMaster, transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
-        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile } = REV;
+        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile, parseShopifyOrders, enrichBrpShopify } = REV;
 
 /* ---------- SVG icons (Lucide-style) ---------- */
 const ICONS = {
@@ -1057,7 +1117,10 @@ const I18N = {
     "chip.cash":"Cashier Master: {0} staff","chip.online":"Online (BRP): {0} file(s)",
     "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (Order Breakdown export); appended to this report",
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
-    "btn.palexy":"Export for Palexy","btn.pdf":"Export PDF",
+    "shopify.title":"Update info Shopify (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
+    "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
+    "btn.brpupd":"BRP info Updated","toast.brpupd":"BRP info Updated downloaded • {0} Shopify rows filled",
+    "btn.palexy":"Palexy Report","btn.pdf":"Sales Daily Report (Dashboard)",
     "toast.casherr":"Cannot read Cashier Master","toast.palexy":"Palexy report downloaded","toast.palexy.nocash":"Exported with cashier codes — upload Cashier Master to fill names",
     "ch.s.cashier":"Top Cashiers by Net Sales","ch.s.cashierBills":"Top Cashiers by Bills","pdf.generated":"Generated {0}",
     "home.step1":"Upload Master Data","home.step1hint":"Shared by both reports — upload once",
@@ -1070,7 +1133,7 @@ const I18N = {
     "raw.sales.title":"Raw Sales files (e-point)","raw.sales.desc":"Select multiple files / stores",
     "raw.inv.title":"Raw Inventory file (Status balance list)","raw.inv.desc":"Stock Status / Balance report",
     "report.step1":"Upload {0} file","chip.item":"Item Master: {0} SKU","chip.loc":"Location Master: {0} stores",
-    "btn.run":"Generate report","btn.export":"Export to .xlsx",
+    "btn.run":"Generate report","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"Upload the Sales file to continue","need.inv":"Upload the Inventory file to continue","ready.msg":"Ready • {0} raw file(s)",
     "soh.label":"Show rows:","soh.nonzero":"SOH ≠ 0 only","soh.all":"All rows","soh.pos":"SOH > 0 only",
     "results.title":"Results","preview.title":"Report preview (first 50 rows)","unmatched.title":"Items not found in Item Master","spin.text":"Processing…",
@@ -1111,7 +1174,10 @@ const I18N = {
     "chip.cash":"Cashier Master: {0} คน","chip.online":"ออนไลน์ (BRP): {0} ไฟล์",
     "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ไฟล์ Order Breakdown) ต่อท้ายในรายงานนี้",
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
-    "btn.palexy":"Export สำหรับ Palexy","btn.pdf":"บันทึก PDF",
+    "shopify.title":"อัปเดตข้อมูล Shopify (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
+    "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
+    "btn.brpupd":"BRP info Updated","toast.brpupd":"ดาวน์โหลด BRP info Updated แล้ว • เติม Shopify {0} แถว",
+    "btn.palexy":"Palexy Report","btn.pdf":"Sales Daily Report (Dashboard)",
     "toast.casherr":"อ่าน Cashier Master ไม่ได้","toast.palexy":"ดาวน์โหลดรายงาน Palexy แล้ว","toast.palexy.nocash":"Export แล้ว (มีรหัส Cashier) — อัปโหลด Cashier Master เพื่อเติมชื่อ",
     "ch.s.cashier":"พนักงานขายดี (ตามยอดขายสุทธิ)","ch.s.cashierBills":"พนักงานทำบิลมากสุด (จำนวนบิล)","pdf.generated":"สร้างเมื่อ {0}",
     "home.step1":"อัปโหลด Master Data","home.step1hint":"ใช้ร่วมทั้ง 2 รายงาน — อัปโหลดครั้งเดียว",
@@ -1124,7 +1190,7 @@ const I18N = {
     "raw.sales.title":"ไฟล์ Sales ดิบ (e-point)","raw.sales.desc":"เลือกได้หลายไฟล์ / หลายสาขา",
     "raw.inv.title":"ไฟล์ Inventory ดิบ (Status balance list)","raw.inv.desc":"รายงาน Stock Status / Balance",
     "report.step1":"อัปโหลดไฟล์ {0}","chip.item":"Item Master: {0} SKU","chip.loc":"Location Master: {0} สาขา",
-    "btn.run":"สร้างรายงาน","btn.export":"Export เป็น .xlsx",
+    "btn.run":"สร้างรายงาน","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"กรุณาอัปโหลดไฟล์ Sales ก่อน","need.inv":"กรุณาอัปโหลดไฟล์ Inventory ก่อน","ready.msg":"พร้อมสร้างรายงาน • ไฟล์ดิบ {0} ไฟล์",
     "soh.label":"แสดงแถว:","soh.nonzero":"เฉพาะ SOH ≠ 0","soh.all":"ทั้งหมด","soh.pos":"เฉพาะ SOH > 0",
     "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…",
@@ -1155,7 +1221,7 @@ const MODES = {
   sales: { ricon:"receipt", rawTitle:"raw.sales.title", rawDesc:"raw.sales.desc", need:"need.sales", reportName:"report.sales.name", reportSheet:"Sales Report", fileTag:"Sales Daily Report" },
   inv:   { ricon:"package", rawTitle:"raw.inv.title", rawDesc:"raw.inv.desc", need:"need.inv", reportName:"report.inv.name", reportSheet:"Inventory Report", fileTag:"Inventory Report" }
 };
-const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], item:null, loc:null, cashier:null, report:null };
+const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], shopify:{hoka:null,rev:null,names:[]}, item:null, loc:null, cashier:null, report:null };
 const rawArr = () => state.mode ? state.raw[state.mode] : [];
 
 const $ = s => document.querySelector(s);
@@ -1194,6 +1260,35 @@ async function addOnline(fileList){  // online marketplace (BRP) files — valid
   }
   renderOnlineList(); refreshState(); persist();
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));
+}
+function renderShopifyList(){ renderList("#list-shopify", (state.shopify.names||[]).map(nm=>({name:nm})), false); }
+async function addShopify(fileList){  // Shopify orders_export (.csv) — fills Paid/Delivery on Shopify BRP rows; detect store by filename
+  const bad=[];
+  for(const f of fileList){
+    let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.readerr", f.name)); continue; }
+    const map=parseShopifyOrders(sheetAoA(wb));
+    const low=f.name.toLowerCase();
+    const which = /hoka/.test(low) ? "hoka" : (/rev/.test(low) ? "rev" : null);
+    if(!which || !map.size){ bad.push(t("valid.shopify", f.name)); continue; }
+    state.shopify[which]=map;
+    if(!state.shopify.names.includes(f.name)) state.shopify.names.push(f.name);
+  }
+  renderShopifyList(); updateReportChrome(); refreshState(); persist();
+  if(bad.length) alertModal(t("valid.title"), bad.join("\n\n"));
+}
+// Export the BRP file with Paid/Delivery Date enriched from the Shopify uploads (does NOT affect the Sales report)
+function exportBrpUpdated(){
+  if(state.mode!=="sales"||!state.online.length) return;
+  const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
+  let header=null; const allRows=[]; let matched=0;
+  state.online.forEach(bf=>{ const e=enrichBrpShopify(bf.aoa, maps); if(!header) header=e.header; e.rows.forEach(r=>allRows.push(r)); matched+=e.stat.matched; });
+  if(!header){ toast(t("toast.err","no BRP")); return; }
+  const ws=XLSX.utils.aoa_to_sheet([header, ...allRows]);
+  ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BRP");
+  const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  XLSX.writeFile(wb, `BRP info Updated_${tag}.xlsx`, {compression:true});
+  toast(t("toast.brpupd", fmtInt(matched)));
 }
 async function addRaw(fileList){
   const validate = state.mode==="sales" ? validateSalesFile : validateInventoryFile;
@@ -1271,7 +1366,7 @@ function goReport(mode){
   state.mode=mode; state.view="report"; state.report=null;
   $("#view-home").classList.remove("active"); $("#view-report").classList.add("active");
   $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#soh-filter").value="nonzero";
-  renderRawList(); renderOnlineList(); updateReportChrome(); refreshState(); window.scrollTo(0,0); persist();
+  renderRawList(); renderOnlineList(); renderShopifyList(); updateReportChrome(); refreshState(); window.scrollTo(0,0); persist();
 }
 function updateReportChrome(){
   if(state.view!=="report"||!state.mode) return;
@@ -1281,6 +1376,7 @@ function updateReportChrome(){
   $("#soh-wrap").style.display = state.mode==="inv" ? "inline-block" : "none";
   $("#btn-palexy").style.display = state.mode==="sales" ? "inline-flex" : "none";
   $("#drop-online").style.display = state.mode==="sales" ? "block" : "none";
+  $("#btn-brpupd").style.display = state.mode==="sales" ? "inline-flex" : "none";
   const g1=document.querySelector("#view-report .grid1"); if(g1) g1.classList.toggle("pair", state.mode==="sales");
   const chips=[];
   if(state.item) chips.push(t("chip.item", fmtInt(state.item.data.count)));
@@ -1298,6 +1394,7 @@ function refreshState(){
   $("#run-msg").textContent = ok ? t("ready.msg", rawArr().length + onlineCnt) : t(MODES[state.mode].need);
   $("#drop-raw").classList.toggle("has", rawArr().length>0);
   $("#drop-online").classList.toggle("has", state.online.length>0);
+  $("#btn-brpupd").disabled = !(state.mode==="sales" && state.online.length>0 && (state.shopify.hoka||state.shopify.rev));
 }
 
 /* ---------- charts (dependency-free) ---------- */
@@ -1568,7 +1665,7 @@ function doSave(){
   try{
     const sohSel=$("#soh-filter");
     idbPut({ v:1, lang, view:state.view, mode:state.mode, sohMode:sohSel?sohSel.value:"nonzero",
-      item:state.item, loc:state.loc, cashier:state.cashier, raw:state.raw, online:state.online, report:state.report }).catch(e=>console.warn("persist",e));
+      item:state.item, loc:state.loc, cashier:state.cashier, raw:state.raw, online:state.online, shopify:state.shopify, report:state.report }).catch(e=>console.warn("persist",e));
   }catch(e){ console.warn("persist",e); }
 }
 async function restoreSession(){
@@ -1586,6 +1683,7 @@ function applySnapshot(snap){
   state.item=snap.item||null; state.loc=snap.loc||null; state.cashier=snap.cashier||null;
   state.raw=(snap.raw&&snap.raw.sales&&snap.raw.inv)?snap.raw:{sales:[],inv:[]};
   state.online=Array.isArray(snap.online)?snap.online:[];
+  state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,names:Array.isArray(snap.shopify.names)?snap.shopify.names:[]}:{hoka:null,rev:null,names:[]};
   state.report=snap.report||null; state.mode=snap.mode||null; state.view=snap.view||"home";
   if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
   if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],false);
@@ -1594,7 +1692,7 @@ function applySnapshot(snap){
   if(state.view==="report" && state.mode){
     $("#view-home").classList.remove("active"); $("#view-report").classList.add("active");
     const sohSel=$("#soh-filter"); if(sohSel&&snap.sohMode) sohSel.value=snap.sohMode;
-    renderRawList(); renderOnlineList(); updateReportChrome(); refreshState();
+    renderRawList(); renderOnlineList(); renderShopifyList(); updateReportChrome(); refreshState();
     if(state.report){ renderResults(state.report); $("#results").style.display="block"; }
   }
 }
@@ -1636,9 +1734,9 @@ function alertModal(title, message){
 }
 async function clearData(){
   if(!(await confirmModal())) return;
-  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.item=null; state.loc=null; state.cashier=null; state.report=null;
+  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.shopify={hoka:null,rev:null,names:[]}; state.item=null; state.loc=null; state.cashier=null; state.report=null;
   try{ await idbDel(); }catch(e){}
-  $("#list-item").innerHTML=""; $("#list-loc").innerHTML=""; $("#list-cash").innerHTML=""; $("#list-raw").innerHTML=""; $("#list-online").innerHTML="";
+  $("#list-item").innerHTML=""; $("#list-loc").innerHTML=""; $("#list-cash").innerHTML=""; $("#list-raw").innerHTML=""; $("#list-online").innerHTML=""; $("#list-shopify").innerHTML="";
   $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#btn-run").disabled=true;
   $("#view-report").classList.remove("active"); $("#view-home").classList.add("active");
   updateHome(); window.scrollTo(0,0); toast(t("clear.done"));
@@ -1647,6 +1745,7 @@ async function clearData(){
 /* ---------- wire up ---------- */
 wireDrop("#drop-raw","#in-raw", addRaw, true);
 wireDrop("#drop-online","#in-online", addOnline, true);
+wireDrop("#drop-shopify","#in-shopify", addShopify, true);
 wireDrop("#drop-item","#in-item", setItem, false);
 wireDrop("#drop-loc","#in-loc", setLoc, false);
 wireDrop("#drop-cash","#in-cash", setCash, false);
@@ -1658,6 +1757,7 @@ $("#btn-run").addEventListener("click", run);
 $("#btn-export").addEventListener("click", exportXlsx);
 $("#btn-palexy").addEventListener("click", exportPalexy);
 $("#btn-pdf").addEventListener("click", exportPDF);
+$("#btn-brpupd").addEventListener("click", exportBrpUpdated);
 window.addEventListener("beforeprint", ()=>{ populatePrintHead(); document.body.classList.add("printing"); });
 window.addEventListener("afterprint", ()=>{ document.body.classList.remove("printing"); });
 $("#btn-clear").addEventListener("click", clearData);
