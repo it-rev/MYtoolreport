@@ -190,6 +190,9 @@
   .chip svg{width:13px;height:13px;stroke-width:3}
 
   .actionbar{display:flex;align-items:center;gap:14px;margin-top:12px;background:var(--card);padding:16px 18px;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line2);flex-wrap:wrap}
+  .exportgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;flex:1 1 440px}
+  .exportgrid .btn{width:100%;justify-content:center}
+  @media(max-width:640px){.exportgrid{grid-template-columns:1fr 1fr}}
   .btn{border:none;border-radius:9px;padding:11px 20px;font-weight:700;cursor:pointer;font-size:13.5px;display:inline-flex;align-items:center;gap:8px;font-family:inherit}
   .btn svg{width:17px;height:17px}
   .btn-primary{background:linear-gradient(120deg,var(--orange),var(--orange-d));color:#fff}
@@ -331,7 +334,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.6.3</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.1</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -434,10 +437,13 @@
     <div class="step"><div class="n">2</div><h2 data-i18n="report.step2gen"></h2></div>
     <div class="actionbar">
       <button class="btn btn-primary" id="btn-run" disabled><span data-icon="zap"></span><span data-i18n="btn.run"></span></button>
-      <button class="btn btn-ghost" id="btn-export" disabled><span data-icon="download"></span><span></span></button>
-      <button class="btn btn-ghost" id="btn-pdf" disabled><span data-icon="file"></span><span></span></button>
-      <button class="btn btn-ghost" id="btn-palexy" disabled style="display:none"><span data-icon="users"></span><span data-i18n="btn.palexy"></span></button>
-      <button class="btn btn-ghost" id="btn-brpupd" disabled style="display:none"><span data-icon="download"></span><span data-i18n="btn.brpupd"></span></button>
+      <div class="exportgrid">
+        <button class="btn btn-ghost" id="btn-export" disabled><span data-icon="download"></span><span></span></button>
+        <button class="btn btn-ghost" id="btn-brpupd" disabled style="display:none"><span data-icon="download"></span><span data-i18n="btn.brpupd"></span></button>
+        <button class="btn btn-ghost" id="btn-palexy" disabled style="display:none"><span data-icon="users"></span><span data-i18n="btn.palexy"></span></button>
+        <button class="btn btn-ghost" id="btn-pdf" disabled><span data-icon="file"></span><span></span></button>
+        <button class="btn btn-ghost" id="btn-onlinedeliv" disabled style="display:none"><span data-icon="download"></span><span data-i18n="btn.onlinedeliv"></span></button>
+      </div>
       <label id="soh-wrap" style="display:none;font-size:12.5px;color:var(--muted);font-weight:600">
         <span data-i18n="soh.label"></span>
         <select id="soh-filter">
@@ -754,7 +760,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
     return im;
   };
 
-  const rows=[], unmatched=[], cashier=[], seenTxn=new Set();
+  const rows=[], unmatched=[], cashier=[], deliv=[], seenTxn=new Set();
   let stat={ inputLines:0, dropped:0, lineItems:0, matched:0, unmatched:0, blank:0, netSales:0, unmatchedNet:0 };
 
   for(const bf of brpFiles){
@@ -773,7 +779,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
           iPrice=gi("PRODUCT AMOUNT (RM)","PRODUCT AMOUNT"),
           iSVou=gi("SELLER VOUCHER (RM)","SELLER VOUCHER"),
           iSDisc=gi("SELLER DISCOUNT (RM)","SELLER DISCOUNT"),
-          iCName=gi("CUSTOMER NAME");
+          iCName=gi("CUSTOMER NAME"), iDeliv=gi("DELIVERY DATE");
 
     for(let r=hi+1; r<aoa.length; r++){
       const row=aoa[r]; if(!row) continue;
@@ -823,9 +829,10 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
           B,B, qty, net, B,B,B, B,B, tc, "", custName ]));
       }
       cashier.push(["",""]);   // online has no cashier — keep parallel to rows[] for Palexy export
+      deliv.push(iDeliv>=0 ? trim(row[iDeliv]) : "");   // Delivery Date per row (for by-delivery split export)
     }
   }
-  return { rows, unmatched, cashier, stat, txnCount: seenTxn.size, hasCashier:false };
+  return { rows, unmatched, cashier, deliv, stat, txnCount: seenTxn.size, hasCashier:false };
 }
 
 /* ========================= INVENTORY REPORT ========================= */
@@ -1039,6 +1046,9 @@ function enrichBrpShopify(brpAoa, maps){
         iMkt=gi("MARKERPLACE ORDER NO.","MARKETPLACE ORDER NO.","MARKETPLACE ORDER NO"),
         iStore=gi("STORE"), iPaid=gi("PAID DATE"), iDeliv=gi("DELIVERY DATE");
   const header=aoa[hi].slice(); const rows=[];
+  // normalize every date column (header contains "date") to DD/MM/YYYY in the output
+  const dateCols=header.map((h,i)=> /date/i.test(String(h==null?"":h)) ? i : -1).filter(i=>i>=0);
+  const dmy=v=>{ const dt=parseDate(v); return dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : v; };
   let stat={ dataRows:0, shopify:0, matched:0 };
   for(let r=hi+1;r<aoa.length;r++){ const src=aoa[r]; if(!src) continue;
     if(trim(src[iOID])==="") continue;
@@ -1052,15 +1062,76 @@ function enrichBrpShopify(brpAoa, maps){
       const hit = (mp && key) ? mp.get(key) : null;
       if(hit){ stat.matched++; if(iPaid>=0) out[iPaid]=hit.paid; if(iDeliv>=0) out[iDeliv]=hit.deliv; }
     }
+    dateCols.forEach(ci=>{ out[ci]=dmy(out[ci]); });   // all date columns -> DD/MM/YYYY
     rows.push(out);
   }
   return { header, rows, stat };
 }
 
+/* ========================= PALEXY REPORT (TH POS TEMPLATE) ========================= */
+// 16-col Thai POS export shape (ref: REV_POS Data). e-point only; BRP/online excluded.
+const PALEXY_TH_COLS = ["Store No_","Transaction No_","Receipt No_","Date","Time","Barcode No_","Item No_",
+  "Variant Code","ModelName","Item Category Code","Price","Quantity","Net Price","Product Class","Cate Name","Nation"];
+// "12:22:13" (24h) or Date -> "12:22:13 PM" (12h + AM/PM)
+function fmtTime12(v){
+  if(v==null||v==="") return "";
+  let h,m,sec;
+  if(v instanceof Date){ h=v.getHours(); m=v.getMinutes(); sec=v.getSeconds(); }
+  else { const mt=String(v).match(/(\d{1,2}):(\d{2}):(\d{2})/); if(!mt) return String(v).trim(); h=+mt[1]; m=+mt[2]; sec=+mt[3]; }
+  const ap = h<12 ? "AM" : "PM"; let hh=h%12; if(hh===0) hh=12;
+  return hh+":"+String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0")+" "+ap;
+}
+// salesFiles = e-point raw [{name,aoa}]. Returns {cols, rows} in the 16-col TH template.
+function transformPalexyTH(salesFiles, itemMaster, opts){
+  opts=opts||{}; const KEEP=new Set((opts.keepTxn||["C","R"]).map(x=>String(x).toUpperCase()));
+  const rows=[]; const B="";
+  for(const sf of salesFiles){
+    const aoa=sf.aoa;
+    let hi=aoa.findIndex(r=>r&&r.some(c=>trim(c).toUpperCase()==="SALES")); if(hi<0) hi=0;
+    const H=headerMap(aoa[hi]);
+    const gi=(...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
+    const iSALES=gi("SALES"), iDATE=gi("DATE"), iTIME=gi("TIME"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
+          iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iTRANS=gi("TRANSACT");
+    // collect merchandise C/R lines grouped by (bill SALES + ITEM_NO); scan+void pairs net to 0
+    const groups=new Map(), order=[];
+    for(let r=hi+1;r<aoa.length;r++){
+      const row=aoa[r]; if(!row) continue;
+      const stock=cleanCode(row[iSTOCK]); if(!stock) continue;
+      const itemNo=trim(row[iITEM]);
+      if(!/^\d+$/.test(itemNo) || stock.charAt(0)==="#") continue;      // merchandise only
+      if(!KEEP.has(trim(row[iTRANS]).toUpperCase())) continue;          // C/R only
+      const key=trim(row[iSALES])+"\u0001"+itemNo;
+      let g=groups.get(key);
+      if(!g){ g={row, stock, qty:0, net:0}; groups.set(key,g); order.push(key); }
+      g.qty += num(row[iQTY]); g.net += num(row[iNET]);
+    }
+    for(const key of order){
+      const g=groups.get(key);
+      if(Math.abs(g.qty)<1e-9) continue;   // scanned then voided within the bill -> drop (net qty 0)
+      const row=g.row, stock=g.stock;
+      let im=itemMaster.byEpoint.get(stock);
+      if(!im){ const desc=trim(row[iDESC]); const semi=desc.indexOf(";");
+        if(semi>=0){ const alt=cleanCode(desc.slice(semi+1)); im=itemMaster.byEpoint.get(alt)||itemMaster.byProduct.get(alt); } }
+      const dt=parseDate(row[iDATE]);
+      const dstr = dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : "";
+      const store=trim(row[iLOC]), sales=trim(row[iSALES]), tm=fmtTime12(row[iTIME]);
+      if(im){
+        const catCode = (im.brand&&im.gender) ? im.brand+"-"+im.gender : B;
+        const cateName = (im.brand&&im.gender&&im.category) ? im.brand+"-"+im.gender+"-"+im.category : B;
+        rows.push([ store, B, sales, dstr, tm, im.barcode, im.gdno, sizeRev(im.sizerev), im.model,
+          catCode, im.rrp, g.qty, g.net, im.types, cateName, B ]);
+      } else {
+        rows.push([ store, B, sales, dstr, tm, B, styleOf(stock), B, B, B, B, g.qty, g.net, B, B, B ]);
+      }
+    }
+  }
+  return { cols: PALEXY_TH_COLS, rows };
+}
+
 const API = { trim, num, excelSerial, isoWeek, parseDate, headerMap, parseItemMaster, parseLocationMaster, parseCashierMaster,
   transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, serialDate, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
   validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile,
-  parseShopifyOrders, enrichBrpShopify };
+  parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS };
 if(typeof module!=="undefined" && module.exports) module.exports = API;
 global.REVSales = API;
 })(typeof window!=="undefined" ? window : globalThis);
@@ -1070,7 +1141,7 @@ global.REVSales = API;
 /* ============== REV Report Tool — UI layer ============== */
 const REV = window.REVSales;
 const { trim, num, parseItemMaster, parseLocationMaster, parseCashierMaster, transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
-        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile, parseShopifyOrders, enrichBrpShopify } = REV;
+        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile, parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS } = REV;
 
 /* ---------- SVG icons (Lucide-style) ---------- */
 const ICONS = {
@@ -1117,10 +1188,10 @@ const I18N = {
     "chip.cash":"Cashier Master: {0} staff","chip.online":"Online (BRP): {0} file(s)",
     "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (Order Breakdown export); appended to this report",
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
-    "shopify.title":"Update info Shopify (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
+    "shopify.title":"Update Online Info (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
     "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
-    "btn.brpupd":"BRP info Updated","toast.brpupd":"BRP info Updated downloaded • {0} Shopify rows filled",
-    "btn.palexy":"Palexy Report","btn.pdf":"Sales Daily Report (Dashboard)",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexyth.cash":"Palexy Report (TH Template) also needs the Cashier Master — import it on the home screen first.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
+    "btn.palexy":"Palexy Report (TH Template)","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "toast.casherr":"Cannot read Cashier Master","toast.palexy":"Palexy report downloaded","toast.palexy.nocash":"Exported with cashier codes — upload Cashier Master to fill names",
     "ch.s.cashier":"Top Cashiers by Net Sales","ch.s.cashierBills":"Top Cashiers by Bills","pdf.generated":"Generated {0}",
@@ -1175,10 +1246,10 @@ const I18N = {
     "chip.cash":"Cashier Master: {0} คน","chip.online":"ออนไลน์ (BRP): {0} ไฟล์",
     "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ไฟล์ Order Breakdown) ต่อท้ายในรายงานนี้",
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
-    "shopify.title":"อัปเดตข้อมูล Shopify (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
+    "shopify.title":"อัปเดตข้อมูล Online (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
     "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
-    "btn.brpupd":"BRP info Updated","toast.brpupd":"ดาวน์โหลด BRP info Updated แล้ว • เติม Shopify {0} แถว",
-    "btn.palexy":"Palexy Report","btn.pdf":"Sales Daily Report (Dashboard)",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexyth.cash":"Palexy Report (TH Template) also needs the Cashier Master — import it on the home screen first.","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
+    "btn.palexy":"Palexy Report (TH Template)","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "toast.casherr":"อ่าน Cashier Master ไม่ได้","toast.palexy":"ดาวน์โหลดรายงาน Palexy แล้ว","toast.palexy.nocash":"Export แล้ว (มีรหัส Cashier) — อัปโหลด Cashier Master เพื่อเติมชื่อ",
     "ch.s.cashier":"พนักงานขายดี (ตามยอดขายสุทธิ)","ch.s.cashierBills":"พนักงานทำบิลมากสุด (จำนวนบิล)","pdf.generated":"สร้างเมื่อ {0}",
@@ -1223,7 +1294,7 @@ const MODES = {
   sales: { ricon:"receipt", rawTitle:"raw.sales.title", rawDesc:"raw.sales.desc", need:"need.sales", reportName:"report.sales.name", reportSheet:"Sales Report", fileTag:"Sales Daily Report" },
   inv:   { ricon:"package", rawTitle:"raw.inv.title", rawDesc:"raw.inv.desc", need:"need.inv", reportName:"report.inv.name", reportSheet:"Inventory Report", fileTag:"Inventory Report" }
 };
-const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], shopify:{hoka:null,rev:null,names:[]}, item:null, loc:null, cashier:null, report:null };
+const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], shopify:{hoka:null,rev:null,files:[]}, item:null, loc:null, cashier:null, report:null };
 const rawArr = () => state.mode ? state.raw[state.mode] : [];
 
 const $ = s => document.querySelector(s);
@@ -1263,7 +1334,7 @@ async function addOnline(fileList){  // online marketplace (BRP) files — valid
   renderOnlineList(); refreshState(); persist();
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));
 }
-function renderShopifyList(){ renderList("#list-shopify", (state.shopify.names||[]).map(nm=>({name:nm})), false); }
+function renderShopifyList(){ renderList("#list-shopify", state.shopify.files||[], true, i=>{ const f=(state.shopify.files||[])[i]; if(f){ state.shopify[f.which]=null; state.shopify.files.splice(i,1); } renderShopifyList(); refreshState(); persist(); }); }
 async function addShopify(fileList){  // Shopify orders_export (.csv) — fills Paid/Delivery on Shopify BRP rows; detect store by filename
   const bad=[];
   for(const f of fileList){
@@ -1273,7 +1344,8 @@ async function addShopify(fileList){  // Shopify orders_export (.csv) — fills 
     const which = /hoka/.test(low) ? "hoka" : (/rev/.test(low) ? "rev" : null);
     if(!which || !map.size){ bad.push(t("valid.shopify", f.name)); continue; }
     state.shopify[which]=map;
-    if(!state.shopify.names.includes(f.name)) state.shopify.names.push(f.name);
+    state.shopify.files=(state.shopify.files||[]).filter(x=>x.which!==which);
+    state.shopify.files.push({name:f.name, which});
   }
   renderShopifyList(); updateReportChrome(); refreshState(); persist();
   if(bad.length) alertModal(t("valid.title"), bad.join("\n\n"));
@@ -1289,8 +1361,53 @@ function exportBrpUpdated(){
   ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BRP");
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, `BRP info Updated_${tag}.xlsx`, {compression:true});
+  XLSX.writeFile(wb, `Online info Updated_${tag}.xlsx`, {compression:true});
   toast(t("toast.brpupd", fmtInt(matched)));
+}
+/* ---- minimal ZIP writer (store / no compression) for multi-file export ---- */
+const _crcT=(()=>{let c,t=[];for(let nn=0;nn<256;nn++){c=nn;for(let k=0;k<8;k++)c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);t[nn]=c>>>0;}return t;})();
+function _crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=_crcT[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function makeZip(files){
+  const enc=new TextEncoder(), u16=v=>[v&255,(v>>8)&255], u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+  const parts=[], central=[]; let off=0;
+  for(const f of files){ const nm=enc.encode(f.name), d=f.data, crc=_crc32(d);
+    const lh=new Uint8Array([].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(d.length),u32(d.length),u16(nm.length),u16(0)));
+    parts.push(lh,nm,d); const lo=off; off+=lh.length+nm.length+d.length;
+    central.push(new Uint8Array([].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(d.length),u32(d.length),u16(nm.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(lo))), nm); }
+  let cdSize=0; central.forEach(c=>cdSize+=c.length);
+  const eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cdSize),u32(off),u16(0)));
+  const out=new Uint8Array(off+cdSize+eocd.length); let p=0;
+  for(const c of parts){ out.set(c,p); p+=c.length; }
+  for(const c of central){ out.set(c,p); p+=c.length; }
+  out.set(eocd,p); return out;
+}
+function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},150); }
+// Online-only Sales report, split into one .xlsx per Delivery Date (+ "No Delivery Date"), zipped. Uses Shopify-enriched dates if uploaded.
+function exportOnlineByDelivery(){
+  if(state.mode!=="sales"||!state.online.length) return;
+  const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
+  const groups=new Map();
+  state.online.forEach(bf=>{
+    const e=enrichBrpShopify(bf.aoa, maps);
+    const rep=transformOnlineSales([{name:bf.name, aoa:[e.header, ...e.rows]}], state.item.data, state.loc.data, {});
+    rep.rows.forEach((r,i)=>{ const raw=(rep.deliv&&rep.deliv[i])?String(rep.deliv[i]).trim():"";
+      let key="__NODATE__";
+      if(raw){ const dt=REV.parseDate(raw); key = dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : raw; }   // normalize all delivery dates to DD/MM/YYYY
+      if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
+  });
+  if(!groups.size){ toast(t("toast.err","no online rows"),3000); return; }
+  const setFmt=(ws,last)=>{ const z=(r,c,fm)=>{const ref=XLSX.utils.encode_cell({r,c});const cell=ws[ref];if(cell&&typeof cell.v==="number"){cell.z=fm;cell.t="n";}};
+    for(let r=1;r<=last;r++){ z(r,2,"yyyy-mm-dd"); [24,25,28,29,30].forEach(c=>z(r,c,"#,##0.00")); [31,32].forEach(c=>z(r,c,"0.00%")); z(r,26,"#,##0.####"); z(r,33,"0"); } };
+  const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
+  const files=[]; let total=0;
+  for(const [key,rws] of groups){ const label=key==="__NODATE__"?"No Delivery Date":key;
+    const ws=XLSX.utils.aoa_to_sheet([OUT_COLS, ...rws]); setFmt(ws, rws.length);
+    ws["!cols"]=OUT_COLS.map(h=>({wch:Math.max(9,Math.min(30,h.length+2))}));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Online Sales");
+    files.push({name:`Online Sales_${safe(label)}.xlsx`, data:new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true}))}); total+=rws.length; }
+  const dt=new Date(); const tag=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+  downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
+  toast(t("toast.onlinedeliv", fmtInt(files.length), fmtInt(total)));
 }
 async function addRaw(fileList){
   const validate = state.mode==="sales" ? validateSalesFile : validateInventoryFile;
@@ -1367,18 +1484,22 @@ function goReport(mode){
   if(!(state.item&&state.loc)) return;
   state.mode=mode; state.view="report"; state.report=null;
   $("#view-home").classList.remove("active"); $("#view-report").classList.add("active");
-  $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#soh-filter").value="nonzero";
+  $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#btn-brpupd").disabled=true; $("#btn-onlinedeliv").disabled=true; $("#soh-filter").value="nonzero";
   renderRawList(); renderOnlineList(); renderShopifyList(); updateReportChrome(); refreshState(); window.scrollTo(0,0); persist();
 }
 function updateReportChrome(){
   if(state.view!=="report"||!state.mode) return;
   const cfg=MODES[state.mode];
   $("#raw-ic").innerHTML=svgIcon(cfg.ricon); $("#raw-title").textContent=t(cfg.rawTitle); $("#raw-desc").textContent=t(cfg.rawDesc);
+  // Raw file card: Required for Inventory, Optional for Sales (Sales can run with BRP/online only)
+  const _dr=$("#drop-raw"); _dr.setAttribute("data-req",t("common.required")); _dr.setAttribute("data-opt",t("common.optional")); _dr.setAttribute("data-ready",t("common.ready"));
+  _dr.classList.toggle("req", state.mode!=="sales"); _dr.classList.toggle("opt", state.mode==="sales");
   $("#rep-step1").textContent=t("report.step1", t(cfg.reportName));
   $("#soh-wrap").style.display = state.mode==="inv" ? "inline-block" : "none";
   $("#btn-palexy").style.display = state.mode==="sales" ? "inline-flex" : "none";
   $("#drop-online").style.display = state.mode==="sales" ? "block" : "none";
   $("#btn-brpupd").style.display = state.mode==="sales" ? "inline-flex" : "none";
+  $("#btn-onlinedeliv").style.display = state.mode==="sales" ? "inline-flex" : "none";
   $("#btn-export").lastElementChild.textContent = t(state.mode==="sales"?"btn.export.sales":"btn.export.inv");
   $("#btn-pdf").lastElementChild.textContent = t(state.mode==="sales"?"btn.pdf.sales":"btn.pdf.inv");
   const g1=document.querySelector("#view-report .grid1"); if(g1) g1.classList.toggle("pair", state.mode==="sales");
@@ -1398,7 +1519,7 @@ function refreshState(){
   $("#run-msg").textContent = ok ? t("ready.msg", rawArr().length + onlineCnt) : t(MODES[state.mode].need);
   $("#drop-raw").classList.toggle("has", rawArr().length>0);
   $("#drop-online").classList.toggle("has", state.online.length>0);
-  $("#btn-brpupd").disabled = !(state.mode==="sales" && state.online.length>0 && (state.shopify.hoka||state.shopify.rev));
+  // btn-brpupd / btn-onlinedeliv are enabled only after Generate (see renderResults)
 }
 
 /* ---------- charts (dependency-free) ---------- */
@@ -1486,7 +1607,10 @@ function renderResults(rep){
   const has = rep.rows.length>0;
   $("#btn-export").disabled = !has;
   $("#btn-pdf").disabled = !has;
-  $("#btn-palexy").disabled = !(has && state.mode==="sales");
+  $("#btn-palexy").disabled = !(has && state.mode==="sales" && state.raw.sales.length>0);   // TH template = e-point only (does not use Cashier Master)
+  const _onlineReady = has && state.mode==="sales" && state.online.length>0 && (state.shopify.hoka||state.shopify.rev);
+  $("#btn-brpupd").disabled = !_onlineReady;
+  $("#btn-onlinedeliv").disabled = !_onlineReady;
 }
 function renderSales(rep){
   const s=rep.stat, a=salesAnalytics(rep);
@@ -1579,18 +1703,33 @@ function exportXlsx(){
   XLSX.writeFile(wb, `${cfg.fileTag}_${tag}.xlsx`, {compression:true}); toast(t("toast.dl"));
 }
 // Palexy export = the full Sales Report + Cashier Code (AH) + Cashier Name (AI)
+// Palexy Report (TH Template): 16-col Thai POS shape, e-point ONLY (no BRP/online).
+// Split into one .xlsx per Date (all stores of that date together), zipped.
 function exportPalexy(){
-  const rep=state.report; if(!rep||state.mode!=="sales") return;
-  const cash=rep.cashier||[];
-  const data = rep.rows.map((r,i)=> r.concat(cash[i]||["",""]));
-  const ws=XLSX.utils.aoa_to_sheet([PALEXY_COLS, ...data]); const last=data.length;
-  const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
-  for(let r=1;r<=last;r++){ setZ(r,2,"yyyy-mm-dd"); [24,25,28,29,30].forEach(c=>setZ(r,c,"#,##0.00")); [31,32].forEach(c=>setZ(r,c,"0.00%")); setZ(r,26,"#,##0.####"); setZ(r,33,"0"); }
-  ws["!cols"]=PALEXY_COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!cols"][37].wch=32; ws["!freeze"]={xSplit:0,ySplit:1};
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sales Report");
+  if(state.mode!=="sales") return;
+  if(!state.raw.sales.length){ toast(t("valid.palexyth"),4000); return; }
+  const rep=transformPalexyTH(state.raw.sales, state.item.data, {});
+  if(!rep.rows.length){ toast(t("toast.err","no e-point rows"),3000); return; }
+  const iDate=rep.cols.indexOf("Date");
+  const groups=new Map();
+  rep.rows.forEach(r=>{ const key=String(r[iDate]||"").trim()||"__NODATE__"; if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
+  const mk=(rws)=>{ const ws=XLSX.utils.aoa_to_sheet([rep.cols, ...rws]);
+    const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
+    for(let r=1;r<=rws.length;r++){ setZ(r,10,"#,##0.00"); setZ(r,11,"0"); setZ(r,12,"#,##0.00"); }
+    ws["!cols"]=rep.cols.map(h=>({wch:Math.max(9,Math.min(28,String(h).length+3))})); ws["!freeze"]={xSplit:0,ySplit:1};
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "POS Data");
+    return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, `Palexy Sales Report_${tag}.xlsx`, {compression:true});
-  toast(state.cashier ? t("toast.palexy") : t("toast.palexy.nocash"), state.cashier?2600:4200);
+  if(groups.size===1){   // single date -> plain xlsx
+    const [key,rws]=[...groups.entries()][0];
+    const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
+    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Palexy Report TH_${safe}.xlsx`);
+  } else {              // multiple dates -> one file per date, zipped
+    const files=[...groups.entries()].map(([key,rws])=>{ const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
+      return {name:`Palexy Report TH_${safe}.xlsx`, data:mk(rws)}; });
+    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report TH_${tag}.zip`);
+  }
+  toast(t("toast.palexyth.split", fmtInt(groups.size), fmtInt(rep.rows.length)));
 }
 // Export the dashboard as PDF via browser print-to-PDF (crisp vector charts).
 // The print layout lives on body.printing, added by the beforeprint handler (covers the button AND Ctrl+P).
@@ -1687,7 +1826,7 @@ function applySnapshot(snap){
   state.item=snap.item||null; state.loc=snap.loc||null; state.cashier=snap.cashier||null;
   state.raw=(snap.raw&&snap.raw.sales&&snap.raw.inv)?snap.raw:{sales:[],inv:[]};
   state.online=Array.isArray(snap.online)?snap.online:[];
-  state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,names:Array.isArray(snap.shopify.names)?snap.shopify.names:[]}:{hoka:null,rev:null,names:[]};
+  state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,files:Array.isArray(snap.shopify.files)?snap.shopify.files:[]}:{hoka:null,rev:null,files:[]};
   state.report=snap.report||null; state.mode=snap.mode||null; state.view=snap.view||"home";
   if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
   if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],false);
@@ -1738,7 +1877,7 @@ function alertModal(title, message){
 }
 async function clearData(){
   if(!(await confirmModal())) return;
-  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.shopify={hoka:null,rev:null,names:[]}; state.item=null; state.loc=null; state.cashier=null; state.report=null;
+  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.shopify={hoka:null,rev:null,files:[]}; state.item=null; state.loc=null; state.cashier=null; state.report=null;
   try{ await idbDel(); }catch(e){}
   $("#list-item").innerHTML=""; $("#list-loc").innerHTML=""; $("#list-cash").innerHTML=""; $("#list-raw").innerHTML=""; $("#list-online").innerHTML=""; $("#list-shopify").innerHTML="";
   $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#btn-run").disabled=true;
@@ -1762,6 +1901,7 @@ $("#btn-export").addEventListener("click", exportXlsx);
 $("#btn-palexy").addEventListener("click", exportPalexy);
 $("#btn-pdf").addEventListener("click", exportPDF);
 $("#btn-brpupd").addEventListener("click", exportBrpUpdated);
+$("#btn-onlinedeliv").addEventListener("click", exportOnlineByDelivery);
 window.addEventListener("beforeprint", ()=>{ populatePrintHead(); document.body.classList.add("printing"); });
 window.addEventListener("afterprint", ()=>{ document.body.classList.remove("printing"); });
 $("#btn-clear").addEventListener("click", clearData);
