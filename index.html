@@ -590,7 +590,7 @@ function parseItemMaster(aoa){
     rrp: col("RRPrice","RRP"), subcat: col("Sub Cat"), mstyle: col("Master Style"), sizerev: col("Size (REV)","Size(REV)"),
     md: col("MD%","MD %","Markdown %","MD")
   };
-  const byEpoint = new Map(), byProduct = new Map();
+  const byEpoint = new Map(), byProduct = new Map(), byBarcode = new Map();
   for(let r=hi+1; r<aoa.length; r++){
     const row = aoa[r]; if(!row) continue;
     // clean invisible/bidi chars from join keys + code fields (some Master rows wrap the size segment in U+202D/U+202C)
@@ -609,8 +609,10 @@ function parseItemMaster(aoa){
     };
     if(!byEpoint.has(sku)) byEpoint.set(sku, rec);
     if(rec.product && !byProduct.has(rec.product)) byProduct.set(rec.product, rec);
+    const bk = rec.barcode ? rec.barcode.replace(/\.0$/,"") : "";
+    if(bk && !byBarcode.has(bk)) byBarcode.set(bk, rec);
   }
-  return { byEpoint, byProduct, count: byEpoint.size };
+  return { byEpoint, byProduct, byBarcode, count: byEpoint.size };
 }
 
 function parseLocationMaster(aoa){
@@ -773,7 +775,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
     const iOID=gi("ORDER ID"),
           iMkt=gi("MARKERPLACE ORDER NO.","MARKETPLACE ORDER NO.","MARKETPLACE ORDER NO"),
           iStore=gi("STORE"),
-          iSKU=gi("MODEL"), iName=gi("PRODUCT"),
+          iSKU=gi("MODEL"), iName=gi("PRODUCT"), iBar=gi("BAR CODE","BARCODE","BAR CODE NO.","BARCODE NO_"),
           iDate=gi("ORDER DATE"), iStatus=gi("STATUS"),
           iQty=gi("QUANTITY"),
           iPrice=gi("PRODUCT AMOUNT (RM)","PRODUCT AMOUNT"),
@@ -803,7 +805,10 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
         banner, storeCode, storeName ];
 
-      const im = lookup(sku);
+      // join by Bar Code -> Item Master Barcode (primary); fall back to Model lookup if no barcode match
+      const barcode = cleanCode(row[iBar]).replace(/\.0$/,"");
+      let im = (barcode && itemMaster.byBarcode) ? itemMaster.byBarcode.get(barcode) : null;
+      if(!im) im = lookup(sku);
       stat.netSales += net;
       if(im){
         stat.matched++;
