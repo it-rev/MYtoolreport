@@ -334,7 +334,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.4</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.5</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1339,7 +1339,11 @@ async function addOnline(fileList){  // online marketplace (BRP) files — valid
   renderOnlineList(); refreshState(); persist();
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));
 }
-function renderShopifyList(){ renderList("#list-shopify", state.shopify.files||[], true, i=>{ const f=(state.shopify.files||[])[i]; if(f){ state.shopify[f.which]=null; state.shopify.files.splice(i,1); } renderShopifyList(); refreshState(); persist(); }); }
+function renderShopifyList(){ renderList("#list-shopify", (state.shopify.files||[]).map(f=>({name:f.name+(f.n?` • ${fmtInt(f.n)} orders`:"")})), true, i=>{
+  const files=state.shopify.files||[]; const f=files[i]; if(!f) return;
+  files.splice(i,1);
+  rebuildShopifyMaps();   // recompute from remaining files -> deleted file's orders are really removed
+  renderShopifyList(); refreshState(); persist(); }); }
 async function addShopify(fileList){  // Shopify orders_export (.csv) — fills Paid/Delivery on Shopify BRP rows; detect store by filename
   const bad=[];
   for(const f of fileList){
@@ -1348,12 +1352,22 @@ async function addShopify(fileList){  // Shopify orders_export (.csv) — fills 
     const low=f.name.toLowerCase();
     const which = /hoka/.test(low) ? "hoka" : (/rev/.test(low) ? "rev" : null);
     if(!which || !map.size){ bad.push(t("valid.shopify", f.name)); continue; }
-    state.shopify[which]=map;
-    state.shopify.files=(state.shopify.files||[]).filter(x=>x.which!==which);
-    state.shopify.files.push({name:f.name, which});
+    // keep each file's own map so deleting a file can rebuild the store map exactly
+    state.shopify.files=(state.shopify.files||[]).filter(x=>x.name!==f.name);   // same filename re-upload replaces
+    state.shopify.files.push({name:f.name, which, n:map.size, map});
   }
+  rebuildShopifyMaps();
   renderShopifyList(); updateReportChrome(); refreshState(); persist();
   if(bad.length) alertModal(t("valid.title"), bad.join("\n\n"));
+}
+// rebuild hoka/rev maps from the currently-loaded files (upload order = later file wins on duplicate order no)
+function rebuildShopifyMaps(){
+  ["hoka","rev"].forEach(w=>{
+    const fs=(state.shopify.files||[]).filter(x=>x.which===w && x.map instanceof Map);
+    if(!fs.length){ state.shopify[w]=null; return; }
+    const m=new Map(); fs.forEach(f=>f.map.forEach((v,k)=>m.set(k,v)));
+    state.shopify[w]=m;
+  });
 }
 // Export the BRP file with Paid/Delivery Date enriched from the Shopify uploads (does NOT affect the Sales report)
 function exportBrpUpdated(){
@@ -1832,6 +1846,7 @@ function applySnapshot(snap){
   state.raw=(snap.raw&&snap.raw.sales&&snap.raw.inv)?snap.raw:{sales:[],inv:[]};
   state.online=Array.isArray(snap.online)?snap.online:[];
   state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,files:Array.isArray(snap.shopify.files)?snap.shopify.files:[]}:{hoka:null,rev:null,files:[]};
+  try{ rebuildShopifyMaps(); }catch(e){}
   state.report=snap.report||null; state.mode=snap.mode||null; state.view=snap.view||"home";
   if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
   if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],false);
