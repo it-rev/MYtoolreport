@@ -334,7 +334,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.5</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.6</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1405,28 +1405,30 @@ function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=UR
 function exportOnlineByDelivery(){
   if(state.mode!=="sales"||!state.online.length) return;
   const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
-  const groups=new Map();
+  let header=null; const groups=new Map();
   state.online.forEach(bf=>{
-    const e=enrichBrpShopify(bf.aoa, maps);
-    const rep=transformOnlineSales([{name:bf.name, aoa:[e.header, ...e.rows]}], state.item.data, state.loc.data, {});
-    rep.rows.forEach((r,i)=>{ const raw=(rep.deliv&&rep.deliv[i])?String(rep.deliv[i]).trim():"";
-      let key="__NODATE__";
-      if(raw){ const dt=REV.parseDate(raw); key = dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : raw; }   // normalize all delivery dates to DD/MM/YYYY
+    const e=enrichBrpShopify(bf.aoa, maps);   // full BRP layout, dates normalized DD/MM/YYYY (same as Online info Updated)
+    if(!header) header=e.header;
+    const iDeliv=e.header.findIndex(h=>/delivery date/i.test(String(h==null?"":h)));
+    e.rows.forEach(r=>{ const key=(iDeliv>=0 && r[iDeliv]!=null && String(r[iDeliv]).trim()) ? String(r[iDeliv]).trim() : "__NODATE__";
       if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
   });
-  if(!groups.size){ toast(t("toast.err","no online rows"),3000); return; }
-  const setFmt=(ws,last)=>{ const z=(r,c,fm)=>{const ref=XLSX.utils.encode_cell({r,c});const cell=ws[ref];if(cell&&typeof cell.v==="number"){cell.z=fm;cell.t="n";}};
-    for(let r=1;r<=last;r++){ z(r,2,"yyyy-mm-dd"); [24,25,28,29,30].forEach(c=>z(r,c,"#,##0.00")); [31,32].forEach(c=>z(r,c,"0.00%")); z(r,26,"#,##0.####"); z(r,33,"0"); } };
+  if(!header || !groups.size){ toast(t("toast.err","no BRP rows"),3000); return; }
+  const mk=(rws)=>{ const ws=XLSX.utils.aoa_to_sheet([header, ...rws]);
+    ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BRP");
+    return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
-  const files=[]; let total=0;
-  for(const [key,rws] of groups){ const label=key==="__NODATE__"?"No Delivery Date":key;
-    const ws=XLSX.utils.aoa_to_sheet([OUT_COLS, ...rws]); setFmt(ws, rws.length);
-    ws["!cols"]=OUT_COLS.map(h=>({wch:Math.max(9,Math.min(30,h.length+2))}));
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Online Sales");
-    files.push({name:`Online Sales_${safe(label)}.xlsx`, data:new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true}))}); total+=rws.length; }
-  const dt=new Date(); const tag=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
-  downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
-  toast(t("toast.onlinedeliv", fmtInt(files.length), fmtInt(total)));
+  const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  let total=0; groups.forEach(rws=>total+=rws.length);
+  if(groups.size===1){ const [key,rws]=[...groups.entries()][0]; const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
+    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Online by Delivery Date_${lab}.xlsx`);
+  } else {
+    const files=[...groups.entries()].map(([key,rws])=>{ const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
+      return {name:`Online by Delivery Date_${lab}.xlsx`, data:mk(rws)}; });
+    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
+  }
+  toast(t("toast.onlinedeliv", fmtInt(groups.size), fmtInt(total)));
 }
 async function addRaw(fileList){
   const validate = state.mode==="sales" ? validateSalesFile : validateInventoryFile;
