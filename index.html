@@ -158,6 +158,10 @@
   .drop .t{font-weight:700;font-size:13.5px}
   .drop .d{color:var(--muted);font-size:12px;margin:4px 0 12px}
   .drop input[type=file]{display:none}
+  .prev-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+  .ptab{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:var(--font)}
+  .ptab:hover{border-color:var(--orange);color:var(--orange)}
+  .ptab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
   .btn-pick{display:inline-flex;align-items:center;gap:7px;background:var(--navy);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-size:12.5px;font-family:inherit}
   .btn-pick:hover{background:var(--navy2)}
   .filelist{margin-top:11px;text-align:left;font-size:12px;max-height:120px;overflow:auto}
@@ -334,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.6</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.9</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -362,7 +366,7 @@
   <!-- ===================== HOME VIEW ===================== -->
   <div class="view active" id="view-home">
     <div class="step"><div class="n">1</div><h2 data-i18n="home.step1"></h2><div class="hint" data-i18n="home.step1hint"></div></div>
-    <div class="grid3">
+    <div class="grid2">
       <div class="drop req" id="drop-item">
         <div class="dic" data-icon="tag"></div>
         <div class="t" data-i18n="card.item.title"></div>
@@ -376,13 +380,6 @@
         <div class="d" data-i18n="card.loc.desc"></div>
         <label><span class="btn-pick"><span data-icon="upload"></span><span data-i18n="common.pick"></span></span><input type="file" id="in-loc" accept=".xlsx,.xls"></label>
         <div class="filelist" id="list-loc"></div>
-      </div>
-      <div class="drop opt" id="drop-cash">
-        <div class="dic" data-icon="users"></div>
-        <div class="t" data-i18n="card.cash.title"></div>
-        <div class="d" data-i18n="card.cash.desc"></div>
-        <label><span class="btn-pick"><span data-icon="upload"></span><span data-i18n="common.pick"></span></span><input type="file" id="in-cash" accept=".xlsx,.xls"></label>
-        <div class="filelist" id="list-cash"></div>
       </div>
     </div>
 
@@ -468,6 +465,7 @@
 
       <div class="panel">
         <div class="ph"><h3 data-i18n="preview.title"></h3><span class="badge ok" id="preview-count"></span></div>
+        <div class="prev-tabs" id="prev-tabs" style="display:none"></div>
         <div class="scroll"><table><thead id="th-prev"></thead><tbody id="tb-prev"></tbody></table></div>
       </div>
     </div>
@@ -626,26 +624,11 @@ function parseLocationMaster(aoa){
   return { map, count: map.size };
 }
 
-// Cashier Master (sheet "CASHIER"): columns CASHIER (code) + NAME -> Map(code -> employee name)
-function parseCashierMaster(aoa){
-  let hi = aoa.findIndex(r => r && r.some(c => trim(c).toUpperCase()==="CASHIER"));
-  if(hi<0) hi=0;
-  const H = headerMap(aoa[hi]);
-  const ci = (H["CASHIER"]!=null?H["CASHIER"]:0);
-  const ni = (H["NAME"]!=null?H["NAME"]:(H["CASHIER NAME"]!=null?H["CASHIER NAME"]:(H["EMPLOYEE NAME"]!=null?H["EMPLOYEE NAME"]:1)));
-  const map = new Map();
-  for(let r=hi+1;r<aoa.length;r++){ const row=aoa[r]; if(!row) continue; const code=cleanCode(row[ci]); if(!code) continue;
-    if(!map.has(code)) map.set(code, trim(row[ni])); }
-  return { map, count: map.size };
-}
-
 /* ---------- output columns (from "Transaction Number" onward) ---------- */
 const OUT_COLS = ["Transaction Number","Entry Type","Date","Year","Month","Week","Day","Banner","Store Code",
   "Store Name","STYLE CODE","STOCK CODE","Style Name","Color Desc","Width","Brand","Gender","Product Master Style",
   "Category","Collection","Activity","Product Year","Product Season","Current Season","Retail Price","Cost Per Unit","Sold Qty",
   "Net Sales","Gross Sales","Sold COGS","GP$","Discount %","Margin%","TRANS. COUNT","CUST_ID","CUST_NAME"];
-// Palexy export = the 33 Sales columns + Cashier Code (col AH, idx 33) + Cashier Name (col AI, idx 34)
-const PALEXY_COLS = OUT_COLS.concat(["Cashier Code","Cashier Name"]);
 
 /* ---------- core transform ---------- */
 // salesFiles: [{name, aoa}], itemMaster: parseItemMaster() result, locMaster: parseLocationMaster() result
@@ -655,9 +638,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
   // C = confirmed sale, R = return/exchange (negative net). Dropped: X = void (cancelled bill),
   // T = settlement/tender, I = voucher/package, and any blank/other. (User rule 2026-06-30.)
   const KEEP_T = new Set((opts.keepTxn || ["C","R"]).map(s=>String(s).toUpperCase()));
-  // optional Cashier Master (code -> name) — used to enrich the Palexy export & cashier dashboard
-  const cashMap = (opts.cashier && opts.cashier.map) ? opts.cashier.map : (opts.cashier instanceof Map ? opts.cashier : null);
-  const rows = [], unmatched = [], cashier = [], seenTxn = new Set();
+  const rows = [], unmatched = [], seenTxn = new Set();
   // excluded = non-merchandise lines (payment/discount/tip; ITEM_NO not numeric or STOCK starts with '#')
   // voided   = merchandise lines dropped by the TRANSACT filter (X void / T settlement / etc.)
   // lineItems = kept sale lines (merchandise + allowed TRANSACT); matched or unmatched
@@ -671,7 +652,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
     const gi = (...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
     const iSALES=gi("SALES"), iDATE=gi("DATE"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
           iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iPRICE=gi("PRICE"), iNETDISC=gi("MTD2_NETDISC"),
-          iTRANS=gi("TRANSACT"), iCASH=gi("CASHIER"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME");
+          iTRANS=gi("TRANSACT"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME");
 
     for(let r=hi+1;r<aoa.length;r++){
       const row=aoa[r]; if(!row) continue;
@@ -704,9 +685,6 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       const head = [ txn, "",
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
         loc.banner, storeCodeOut, storeName ];
-      const cashCode = cleanCode(row[iCASH]);                       // raw CASHIER code (col E)
-      const cashName = cashMap ? (cashMap.get(cashCode) || "") : ""; // name from Cashier Master (blank if terminal/no match)
-
       stat.netSales += net;
       if(im){
         stat.matched++;
@@ -732,10 +710,9 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
           B, B, B, B,  B, B, B, B,  B, B, B,
           B, B, qty, net, B, B, B,  B, B, tc, custId, custName ]));
       }
-      cashier.push([cashCode, cashName]);   // parallel to rows[] — merged only into the Palexy export
     }
   }
-  return { rows, unmatched, cashier, stat, txnCount: seenTxn.size, hasCashier: !!cashMap };
+  return { rows, unmatched, stat, txnCount: seenTxn.size };
 }
 
 /* ---------- ONLINE (marketplace / BRP) sales transform ---------- */
@@ -762,7 +739,7 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
     return im;
   };
 
-  const rows=[], unmatched=[], cashier=[], deliv=[], seenTxn=new Set();
+  const rows=[], unmatched=[], deliv=[], seenTxn=new Set();
   let stat={ inputLines:0, dropped:0, lineItems:0, matched:0, unmatched:0, blank:0, netSales:0, unmatchedNet:0 };
 
   for(const bf of brpFiles){
@@ -833,11 +810,10 @@ function transformOnlineSales(brpFiles, itemMaster, locMaster, opts){
           B,B,B,B, B,B,B,B, B,B,B,
           B,B, qty, net, B,B,B, B,B, tc, "", custName ]));
       }
-      cashier.push(["",""]);   // online has no cashier — keep parallel to rows[] for Palexy export
       deliv.push(iDeliv>=0 ? trim(row[iDeliv]) : "");   // Delivery Date per row (for by-delivery split export)
     }
   }
-  return { rows, unmatched, cashier, deliv, stat, txnCount: seenTxn.size, hasCashier:false };
+  return { rows, unmatched, deliv, stat, txnCount: seenTxn.size };
 }
 
 /* ========================= INVENTORY REPORT ========================= */
@@ -922,8 +898,7 @@ function seasonKey(s){ s=String(s).trim().toUpperCase(); const m=s.match(/([SF])
 // Sales analytics from report rows (OUT_COLS layout)
 function salesAnalytics(rep){
   let netSales=0, units=0, bills=0, gp=0, matchedNet=0, orgSold=0;
-  const byStore=new Map(), byBrand=new Map(), byCat=new Map(), byStyle=new Map(), byDate=new Map(), byCashier=new Map(), byCashierBills=new Map();
-  const cash=rep.cashier||[];
+  const byStore=new Map(), byBrand=new Map(), byCat=new Map(), byStyle=new Map(), byDate=new Map();
   rep.rows.forEach((r,i)=>{
     const net=_n0(r[27]), qty=_n0(r[26]), tc=_n0(r[33]);
     netSales+=net; units+=qty; bills+=tc;
@@ -932,15 +907,12 @@ function salesAnalytics(rep){
     _add(byStore, r[8], net); _add(byBrand, r[15], net); _add(byCat, r[18], net);
     _add(byStyle, (r[12]||r[10]||r[11]), net);   // Top Styles labelled by Style Name (fallback code)
     if(r[2]!=="") _add(byDate, serialDate(r[2]), net);
-    const c=cash[i], cName=c?(c[1]||c[0]):"";           // cashier name (fallback code) if present
-    if(cName){ _add(byCashier, cName, net); byCashierBills.set(cName,(byCashierBills.get(cName)||0)+tc); }
   });
   const dates=[...byDate.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([label,value])=>({label,value}));
   return { kpi:{ netSales, gp, marginPct: matchedNet?gp/matchedNet:0, units, bills,
                  atv: bills?netSales/bills:0, upt: bills?units/bills:0,
-                 discPct: orgSold?(orgSold-netSales)/orgSold:0, cashiers: byCashier.size },
-    byStore:_sortDesc(byStore), byBrand:_sortDesc(byBrand), byCat:_sortDesc(byCat), topStyles:_topN(byStyle,10), byDate:dates,
-    topCashiers:_topN(byCashier,10), topCashiersBills:_topN(byCashierBills,10) };
+                 discPct: orgSold?(orgSold-netSales)/orgSold:0 },
+    byStore:_sortDesc(byStore), byBrand:_sortDesc(byBrand), byCat:_sortDesc(byCat), topStyles:_topN(byStyle,10), byDate:dates };
 }
 
 // Inventory analytics from report rows (INV_OUT_COLS layout)
@@ -996,14 +968,6 @@ function validateInventoryFile(aoa){
   const H=_hdrSet(aoa[hi]);
   return { ok:H["UNIT COST"]?true:false, missing:H["UNIT COST"]?[]:["Unit Cost"] };
 }
-function validateCashierMaster(aoa){
-  const hi = (aoa||[]).findIndex(r => r && r.some(c => trim(c).toUpperCase()==="CASHIER"));
-  if(hi<0) return { ok:false, missing:["CASHIER"] };
-  const H=_hdrSet(aoa[hi]); const has=(...al)=>al.some(a=>H[a.toUpperCase().replace(/\s+/g," ")]);
-  const ok = has("NAME","CASHIER NAME","EMPLOYEE NAME");
-  return { ok, missing: ok?[]:["NAME"] };
-}
-
 function validateBRPFile(aoa){
   const hi = (aoa||[]).findIndex(r => r && r.some(c => trim(c).toUpperCase()==="ORDER ID"));
   if(hi<0) return { ok:false, missing:["Order ID"] };
@@ -1124,18 +1088,18 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
         const catCode = (im.brand&&im.gender) ? im.brand+"-"+im.gender : B;
         const cateName = (im.brand&&im.gender&&im.category) ? im.brand+"-"+im.gender+"-"+im.category : B;
         rows.push([ store, B, sales, dstr, tm, im.barcode, im.gdno, sizeRev(im.sizerev), im.model,
-          catCode, im.rrp, g.qty, g.net, im.types, cateName, B ]);
+          catCode, im.rrp, -g.qty, g.net, im.types, cateName, B ]);
       } else {
-        rows.push([ store, B, sales, dstr, tm, B, styleOf(stock), B, B, B, B, g.qty, g.net, B, B, B ]);
+        rows.push([ store, B, sales, dstr, tm, B, styleOf(stock), B, B, B, B, -g.qty, g.net, B, B, B ]);
       }
     }
   }
   return { cols: PALEXY_TH_COLS, rows };
 }
 
-const API = { trim, num, excelSerial, isoWeek, parseDate, headerMap, parseItemMaster, parseLocationMaster, parseCashierMaster,
-  transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, serialDate, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
-  validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile,
+const API = { trim, num, excelSerial, isoWeek, parseDate, headerMap, parseItemMaster, parseLocationMaster,
+  transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, serialDate, OUT_COLS, INV_OUT_COLS,
+  validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateBRPFile,
   parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS };
 if(typeof module!=="undefined" && module.exports) module.exports = API;
 global.REVSales = API;
@@ -1145,8 +1109,8 @@ global.REVSales = API;
 "use strict";
 /* ============== REV Report Tool — UI layer ============== */
 const REV = window.REVSales;
-const { trim, num, parseItemMaster, parseLocationMaster, parseCashierMaster, transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, OUT_COLS, INV_OUT_COLS, PALEXY_COLS,
-        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateCashierMaster, validateBRPFile, parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS } = REV;
+const { trim, num, parseItemMaster, parseLocationMaster, transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, OUT_COLS, INV_OUT_COLS,
+        validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateBRPFile, parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS } = REV;
 
 /* ---------- SVG icons (Lucide-style) ---------- */
 const ICONS = {
@@ -1188,18 +1152,16 @@ const I18N = {
     "valid.loc":"\"{0}\" is not a valid Location Master file.\nMissing column(s): {1}\n\nExpected: STORECODE, STORE NAME, BANNER.",
     "valid.sales":"\"{0}\" is not a valid raw Sales (e-point) file.\nMissing column(s): {1}",
     "valid.inv":"\"{0}\" is not a valid raw Inventory file.\nMissing: {1}\n\nExpected the Status balance list (Stock, Balance, Unit Cost).",
-    "valid.cash":"\"{0}\" is not a valid Cashier Master file.\nMissing column(s): {1}\n\nExpected the CASHIER sheet with: CASHIER, NAME.",
-    "card.cash.title":"Cashier Master","card.cash.desc":"Optional — staff names for the Palexy export (sheet CASHIER)","common.optional":"Optional",
-    "chip.cash":"Cashier Master: {0} staff","chip.online":"Online (BRP): {0} file(s)",
+    "common.optional":"Optional",
+    "chip.online":"Online (BRP): {0} file(s)",
     "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (Order Breakdown export); appended to this report",
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
     "shopify.title":"Update Online Info (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
     "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexyth.cash":"Palexy Report (TH Template) also needs the Cashier Master — import it on the home screen first.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
-    "btn.palexy":"Palexy Report (TH Template)","btn.pdf":"Sales Daily Report (Dashboard)",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
+    "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
-    "toast.casherr":"Cannot read Cashier Master","toast.palexy":"Palexy report downloaded","toast.palexy.nocash":"Exported with cashier codes — upload Cashier Master to fill names",
-    "ch.s.cashier":"Top Cashiers by Net Sales","ch.s.cashierBills":"Top Cashiers by Bills","pdf.generated":"Generated {0}",
+    "pdf.generated":"Generated {0}",
     "home.step1":"Upload Master Data","home.step1hint":"Shared by both reports — upload once",
     "card.item.title":"Item Master","card.item.desc":"Product master file (sheet ITEM MASTER)",
     "card.loc.title":"Location Master","card.loc.desc":"Store master file (sheet LOCATION MASTER)",
@@ -1213,7 +1175,7 @@ const I18N = {
     "btn.run":"Generate report","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"Upload the Sales file to continue","need.inv":"Upload the Inventory file to continue","ready.msg":"Ready • {0} raw file(s)",
     "soh.label":"Show rows:","soh.nonzero":"SOH ≠ 0 only","soh.all":"All rows","soh.pos":"SOH > 0 only",
-    "results.title":"Results","preview.title":"Report preview (first 50 rows)","unmatched.title":"Items not found in Item Master","spin.text":"Processing…",
+    "results.title":"Results","preview.title":"Report preview (first 50 rows)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"Items not found in Item Master","spin.text":"Processing…",
     "toast.done":"Report generated • {0} rows","toast.dl":"Report downloaded","toast.readerr":"Cannot read file: {0}",
     "toast.itemerr":"Cannot read Item Master","toast.locerr":"Cannot read Location Master","toast.onlyxlsx":"Only .xlsx / .xls supported","toast.err":"Error: {0}",
     "sfx.rows":"{0} rows","sfx.items":"{0} items","sfx.lines":"{0} lines","sfx.days":"{0} days",
@@ -1246,18 +1208,16 @@ const I18N = {
     "valid.loc":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Location Master ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมี: STORECODE, STORE NAME, BANNER",
     "valid.sales":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Sales ดิบ (e-point) ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}",
     "valid.inv":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Inventory ดิบ ที่ถูกต้อง\nสิ่งที่ขาด: {1}\n\nต้องเป็น Status balance list (Stock, Balance, Unit Cost)",
-    "valid.cash":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Cashier Master ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องเป็นชีต CASHIER ที่มี: CASHIER, NAME",
-    "card.cash.title":"Cashier Master","card.cash.desc":"ไม่บังคับ — ชื่อพนักงานสำหรับรายงาน Palexy (ชีต CASHIER)","common.optional":"ไม่บังคับ",
-    "chip.cash":"Cashier Master: {0} คน","chip.online":"ออนไลน์ (BRP): {0} ไฟล์",
+    "common.optional":"ไม่บังคับ",
+    "chip.online":"ออนไลน์ (BRP): {0} ไฟล์",
     "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ไฟล์ Order Breakdown) ต่อท้ายในรายงานนี้",
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
     "shopify.title":"อัปเดตข้อมูล Online (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
     "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexyth.cash":"Palexy Report (TH Template) also needs the Cashier Master — import it on the home screen first.","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
-    "btn.palexy":"Palexy Report (TH Template)","btn.pdf":"Sales Daily Report (Dashboard)",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
+    "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
-    "toast.casherr":"อ่าน Cashier Master ไม่ได้","toast.palexy":"ดาวน์โหลดรายงาน Palexy แล้ว","toast.palexy.nocash":"Export แล้ว (มีรหัส Cashier) — อัปโหลด Cashier Master เพื่อเติมชื่อ",
-    "ch.s.cashier":"พนักงานขายดี (ตามยอดขายสุทธิ)","ch.s.cashierBills":"พนักงานทำบิลมากสุด (จำนวนบิล)","pdf.generated":"สร้างเมื่อ {0}",
+    "pdf.generated":"สร้างเมื่อ {0}",
     "home.step1":"อัปโหลด Master Data","home.step1hint":"ใช้ร่วมทั้ง 2 รายงาน — อัปโหลดครั้งเดียว",
     "card.item.title":"Item Master","card.item.desc":"ไฟล์ Master สินค้า (sheet ITEM MASTER)",
     "card.loc.title":"Location Master","card.loc.desc":"ไฟล์ Master สาขา (sheet LOCATION MASTER)",
@@ -1271,7 +1231,7 @@ const I18N = {
     "btn.run":"สร้างรายงาน","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"กรุณาอัปโหลดไฟล์ Sales ก่อน","need.inv":"กรุณาอัปโหลดไฟล์ Inventory ก่อน","ready.msg":"พร้อมสร้างรายงาน • ไฟล์ดิบ {0} ไฟล์",
     "soh.label":"แสดงแถว:","soh.nonzero":"เฉพาะ SOH ≠ 0","soh.all":"ทั้งหมด","soh.pos":"เฉพาะ SOH > 0",
-    "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…",
+    "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…",
     "toast.done":"สร้างรายงานสำเร็จ • {0} แถว","toast.dl":"ดาวน์โหลดไฟล์รายงานแล้ว","toast.readerr":"อ่านไฟล์ไม่ได้: {0}",
     "toast.itemerr":"อ่าน Item Master ไม่ได้","toast.locerr":"อ่าน Location Master ไม่ได้","toast.onlyxlsx":"รองรับเฉพาะ .xlsx / .xls","toast.err":"เกิดข้อผิดพลาด: {0}",
     "sfx.rows":"{0} แถว","sfx.items":"{0} รายการ","sfx.lines":"{0} บรรทัด","sfx.days":"{0} วัน",
@@ -1299,7 +1259,7 @@ const MODES = {
   sales: { ricon:"receipt", rawTitle:"raw.sales.title", rawDesc:"raw.sales.desc", need:"need.sales", reportName:"report.sales.name", reportSheet:"Sales Report", fileTag:"Sales Daily Report" },
   inv:   { ricon:"package", rawTitle:"raw.inv.title", rawDesc:"raw.inv.desc", need:"need.inv", reportName:"report.inv.name", reportSheet:"Inventory Report", fileTag:"Inventory Report" }
 };
-const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], shopify:{hoka:null,rev:null,files:[]}, item:null, loc:null, cashier:null, report:null };
+const state = { view:"home", mode:null, raw:{sales:[],inv:[]}, online:[], shopify:{hoka:null,rev:null,files:[]}, item:null, loc:null, report:null };
 const rawArr = () => state.mode ? state.raw[state.mode] : [];
 
 const $ = s => document.querySelector(s);
@@ -1459,14 +1419,6 @@ async function setLoc(f){
   renderList("#list-loc",[{name:`${f.name} • ${fmtInt(state.loc.data.count)}`}],false);
   updateHome(); refreshState(); persist();
 }
-async function setCash(f){
-  let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.casherr")); return; }
-  const aoa=sheetAoA(wb,["CASHIER","Sheet1"]); const vr=validateCashierMaster(aoa);
-  if(!vr.ok){ alertBad("valid.cash", f.name, vr.missing); return; }
-  state.cashier={name:f.name, data:parseCashierMaster(aoa)};
-  renderList("#list-cash",[{name:`${f.name} • ${fmtInt(state.cashier.data.count)}`}],false);
-  updateHome(); updateReportChrome(); refreshState(); persist();
-}
 function wireDrop(dropId, inputId, handler, multi){
   const drop=$(dropId), input=$(inputId);
   input.addEventListener("change", e=>{ const fs=[...e.target.files]; if(!fs.length) return; multi?handler(fs):handler(fs[0]); input.value=""; });
@@ -1495,7 +1447,6 @@ function setLang(l){ if(l===lang) return; lang=l; try{localStorage.setItem("rev_
 function updateHome(){
   $("#drop-item").classList.toggle("has", !!state.item);
   $("#drop-loc").classList.toggle("has", !!state.loc);
-  $("#drop-cash").classList.toggle("has", !!state.cashier);
   const ready=!!(state.item&&state.loc);
   ["#rc-sales","#rc-inv"].forEach(id=>{ const c=$(id); c.classList.toggle("enabled",ready); c.classList.toggle("disabled",!ready); });
   $("#home-step2hint").textContent = ready ? t("home.step2ready") : t("home.step2hint");
@@ -1527,7 +1478,6 @@ function updateReportChrome(){
   const chips=[];
   if(state.item) chips.push(t("chip.item", fmtInt(state.item.data.count)));
   if(state.loc)  chips.push(t("chip.loc", fmtInt(state.loc.data.count)));
-  if(state.cashier && state.mode==="sales") chips.push(t("chip.cash", fmtInt(state.cashier.data.count)));
   if(state.online.length && state.mode==="sales") chips.push(t("chip.online", fmtInt(state.online.length)));
   $("#master-chips").innerHTML = chips.map(c=>`<span class="chip">${svgIcon("check")}${esc(c)}</span>`).join("");
 }
@@ -1574,7 +1524,7 @@ function lollipop(items,{money=true,color="#F37121",limit=10}={}){
   return `<div class="bars">`+top.map(i=>{ const w=Math.max(3,Math.abs(i.value)/max*100); const v=money?fmtBaht(i.value):fmtInt(i.value);
     return `<div class="bar"><span class="bl" title="${esc(i.label)}">${esc(i.label)}</span><span class="loli"><span class="loli-t" style="width:${w}%"></span><span class="loli-d" style="left:${w}%;background:${color}"></span></span><span class="bv">${v}</span></div>`; }).join("")+`</div>`;
 }
-// leaderboard (rank badges) — great for cashiers/stores
+// leaderboard (rank badges) — great for stores
 function leaderboard(items,{money=true,limit=10}={}){
   if(!items||!items.length) return emptyChart();
   const top=items.slice(0,limit); const max=Math.max(...top.map(i=>Math.abs(i.value)))||1; const RK=["#F37121","#0f2a4a","#1f9e8f"];
@@ -1628,7 +1578,7 @@ function renderResults(rep){
   const has = rep.rows.length>0;
   $("#btn-export").disabled = !has;
   $("#btn-pdf").disabled = !has;
-  $("#btn-palexy").disabled = !(has && state.mode==="sales" && state.raw.sales.length>0);   // TH template = e-point only (does not use Cashier Master)
+  $("#btn-palexy").disabled = !(has && state.mode==="sales" && state.raw.sales.length>0);   // TH template = e-point only
   const _onlineReady = has && state.mode==="sales" && state.online.length>0 && (state.shopify.hoka||state.shopify.rev);
   $("#btn-brpupd").disabled = !_onlineReady;
   $("#btn-onlinedeliv").disabled = !_onlineReady;
@@ -1647,18 +1597,43 @@ function renderSales(rep){
     + chartPanel("pie",t("ch.s.cat"),"",donut(a.byCat,{money:true}))
     + chartPanel("layers",t("ch.s.brand"),"",leaderboard(a.byBrand,{money:true,limit:12}))
     + chartPanel("award",t("ch.s.top"),"Top 10",lollipop(a.topStyles,{money:true,limit:10}));
-  if(state.cashier && a.topCashiers && a.topCashiers.length){
-    charts += chartPanel("users",t("ch.s.cashier"),"Top 10",leaderboard(a.topCashiers,{money:true,limit:10}));
-    charts += chartPanel("receipt",t("ch.s.cashierBills"),"Top 10",barList(a.topCashiersBills,{money:false,limit:10,colored:true}));
-  }
   if(a.byDate.length>1) charts += chartPanel("trend",t("ch.s.trend"),t("sfx.days",a.byDate.length),lineChart(a.byDate),true);
   $("#charts").innerHTML = charts;
   renderUnmatched(rep,"sales");
-  $("#th-prev").innerHTML="<tr>"+OUT_COLS.map(c=>`<th>${c}</th>`).join("")+"</tr>";
-  const moneyIx=new Set([24,25,28,29,30]), pctIx=new Set([31,32]);
-  $("#tb-prev").innerHTML = rep.rows.slice(0,50).map(r=>"<tr>"+r.map((v,i)=>{ let d=v;
-    if(i===2&&v!=="") d=serialToDisp(v); else if(moneyIx.has(i)&&v!=="") d=fmtMoney(v); else if(pctIx.has(i)&&v!=="") d=(v*100).toFixed(2)+"%";
+  buildSalesPreview(rep);
+}
+// Preview panel supports 3 reports via tabs (Sales Daily / Online by Delivery Date / Palexy TH); each tab shows first 50 rows of that report's real output
+function renderPreviewTable(cols, rows, fmt){
+  $("#th-prev").innerHTML="<tr>"+cols.map(c=>`<th>${esc(String(c==null?"":c))}</th>`).join("")+"</tr>";
+  $("#tb-prev").innerHTML = rows.slice(0,50).map(r=>"<tr>"+r.map((v,i)=>{ const d=fmt?fmt(v,i):v;
     return `<td class="${typeof v==="number"?"num":""}">${d===""||d==null?"":esc(d)}</td>`; }).join("")+"</tr>").join("");
+  $("#preview-count").textContent=t("sfx.rows", fmtInt(rows.length));
+}
+function buildSalesPreview(rep){
+  const salesFmt=(v,i)=>{ if(i===2&&v!=="") return serialToDisp(v); if((i===24||i===25||i===28||i===29||i===30)&&v!=="") return fmtMoney(v); if((i===31||i===32)&&v!=="") return (v*100).toFixed(2)+"%"; return v; };
+  const palFmt=(v,i)=>{ if((i===10||i===12)&&v!=="") return fmtMoney(v); if(i===11&&v!=="") return fmtInt(v); return v; };  // Price/Net money, Quantity int
+  const tabs=[{ key:"sales", label:t("prev.tab.sales"), render:()=>renderPreviewTable(OUT_COLS, rep.rows, salesFmt) }];
+  if(state.online.length>0){   // Online by Delivery Date = full BRP (enriched), same as its export
+    tabs.push({ key:"onlinedeliv", label:t("prev.tab.onlinedeliv"), render:()=>{
+      const maps={hoka:state.shopify.hoka, rev:state.shopify.rev}; let header=null; const rows=[];
+      state.online.forEach(bf=>{ const e=enrichBrpShopify(bf.aoa, maps); if(!header) header=e.header; e.rows.forEach(r=>rows.push(r)); });
+      renderPreviewTable(header||[], rows, null);
+    }});
+  }
+  if(state.raw.sales.length>0){   // Palexy TH = e-point only
+    tabs.push({ key:"palexy", label:t("prev.tab.palexy"), render:()=>{
+      const p=transformPalexyTH(state.raw.sales, state.item.data, {});
+      renderPreviewTable(p.cols, p.rows, palFmt);
+    }});
+  }
+  const bar=$("#prev-tabs");
+  bar.style.display = tabs.length>1 ? "flex" : "none";
+  bar.innerHTML = tabs.map((tb,ix)=>`<button class="ptab${ix===0?' active':''}" data-k="${tb.key}">${esc(tb.label)}</button>`).join("");
+  bar.querySelectorAll(".ptab").forEach(btn=>btn.addEventListener("click",()=>{
+    bar.querySelectorAll(".ptab").forEach(b=>b.classList.remove("active")); btn.classList.add("active");
+    const tb=tabs.find(x=>x.key===btn.dataset.k); if(tb) tb.render();
+  }));
+  tabs[0].render();
 }
 function renderInv(rep){
   const s=rep.stat, a=invAnalytics(rep);
@@ -1675,6 +1650,7 @@ function renderInv(rep){
     + chartPanel("layers",t("ch.i.season"),"",barList(a.bySeason,{money:true,color:"#0f2a4a",limit:12}))
     + chartPanel("award",t("ch.i.top"),"Top 10",lollipop(a.topStyles,{money:true,limit:10}));
   renderUnmatched(rep,"inv");
+  $("#prev-tabs").style.display="none";
   $("#th-prev").innerHTML="<tr>"+INV_OUT_COLS.map(c=>`<th>${c}</th>`).join("")+"</tr>";
   const moneyIx=new Set([20,21,23,24]);
   $("#tb-prev").innerHTML = rep.rows.slice(0,50).map(r=>"<tr>"+r.map((v,i)=>{ let d=v;
@@ -1723,7 +1699,6 @@ function exportXlsx(){
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   XLSX.writeFile(wb, `${cfg.fileTag}_${tag}.xlsx`, {compression:true}); toast(t("toast.dl"));
 }
-// Palexy export = the full Sales Report + Cashier Code (AH) + Cashier Name (AI)
 // Palexy Report (TH Template): 16-col Thai POS shape, e-point ONLY (no BRP/online).
 // Split into one .xlsx per Date (all stores of that date together), zipped.
 function exportPalexy(){
@@ -1769,9 +1744,7 @@ function mergeSalesReports(a, b){
   return {
     rows: a.rows.concat(b.rows),
     unmatched: a.unmatched.concat(b.unmatched),
-    cashier: a.cashier.concat(b.cashier),
     txnCount: (a.txnCount||0)+(b.txnCount||0),
-    hasCashier: !!(a.hasCashier||b.hasCashier),
     stat: { inputLines:S("inputLines"), excluded:(a.stat.excluded||0), voided:(a.stat.voided||0), dropped:(b.stat.dropped||0),
             lineItems:S("lineItems"), matched:S("matched"), unmatched:S("unmatched"), blank:S("blank"),
             netSales:S("netSales"), unmatchedNet:S("unmatchedNet") }
@@ -1783,7 +1756,7 @@ function run(){
     let rep;
     if(state.mode==="sales"){
       // physical POS (optional) + online BRP (optional) → one unified report; at least one is present (btn gate)
-      rep = transformSales(rawArr(), state.item.data, state.loc.data, {cashier: state.cashier?state.cashier.data:null});
+      rep = transformSales(rawArr(), state.item.data, state.loc.data, {});
       if(state.online.length){
         const on = transformOnlineSales(state.online, state.item.data, state.loc.data, {});
         rep = mergeSalesReports(rep, on);
@@ -1829,7 +1802,7 @@ function doSave(){
   try{
     const sohSel=$("#soh-filter");
     idbPut({ v:1, lang, view:state.view, mode:state.mode, sohMode:sohSel?sohSel.value:"nonzero",
-      item:state.item, loc:state.loc, cashier:state.cashier, raw:state.raw, online:state.online, shopify:state.shopify, report:state.report }).catch(e=>console.warn("persist",e));
+      item:state.item, loc:state.loc, raw:state.raw, online:state.online, shopify:state.shopify, report:state.report }).catch(e=>console.warn("persist",e));
   }catch(e){ console.warn("persist",e); }
 }
 async function restoreSession(){
@@ -1844,7 +1817,7 @@ async function restoreSession(){
 }
 function applySnapshot(snap){
   if(snap.lang==="en"||snap.lang==="th") lang=snap.lang;
-  state.item=snap.item||null; state.loc=snap.loc||null; state.cashier=snap.cashier||null;
+  state.item=snap.item||null; state.loc=snap.loc||null;
   state.raw=(snap.raw&&snap.raw.sales&&snap.raw.inv)?snap.raw:{sales:[],inv:[]};
   state.online=Array.isArray(snap.online)?snap.online:[];
   state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,files:Array.isArray(snap.shopify.files)?snap.shopify.files:[]}:{hoka:null,rev:null,files:[]};
@@ -1852,7 +1825,6 @@ function applySnapshot(snap){
   state.report=snap.report||null; state.mode=snap.mode||null; state.view=snap.view||"home";
   if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
   if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],false);
-  if(state.cashier&&state.cashier.data) renderList("#list-cash",[{name:`${state.cashier.name} • ${fmtInt(state.cashier.data.count)}`}],false);
   applyStatic();
   if(state.view==="report" && state.mode){
     $("#view-home").classList.remove("active"); $("#view-report").classList.add("active");
@@ -1899,9 +1871,9 @@ function alertModal(title, message){
 }
 async function clearData(){
   if(!(await confirmModal())) return;
-  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.shopify={hoka:null,rev:null,files:[]}; state.item=null; state.loc=null; state.cashier=null; state.report=null;
+  state.view="home"; state.mode=null; state.raw={sales:[],inv:[]}; state.online=[]; state.shopify={hoka:null,rev:null,files:[]}; state.item=null; state.loc=null; state.report=null;
   try{ await idbDel(); }catch(e){}
-  $("#list-item").innerHTML=""; $("#list-loc").innerHTML=""; $("#list-cash").innerHTML=""; $("#list-raw").innerHTML=""; $("#list-online").innerHTML=""; $("#list-shopify").innerHTML="";
+  $("#list-item").innerHTML=""; $("#list-loc").innerHTML=""; $("#list-raw").innerHTML=""; $("#list-online").innerHTML=""; $("#list-shopify").innerHTML="";
   $("#results").style.display="none"; $("#btn-export").disabled=true; $("#btn-palexy").disabled=true; $("#btn-pdf").disabled=true; $("#btn-run").disabled=true;
   $("#view-report").classList.remove("active"); $("#view-home").classList.add("active");
   updateHome(); window.scrollTo(0,0); toast(t("clear.done"));
@@ -1913,7 +1885,6 @@ wireDrop("#drop-online","#in-online", addOnline, true);
 wireDrop("#drop-shopify","#in-shopify", addShopify, true);
 wireDrop("#drop-item","#in-item", setItem, false);
 wireDrop("#drop-loc","#in-loc", setLoc, false);
-wireDrop("#drop-cash","#in-cash", setCash, false);
 const activate=(el,fn)=>{ el.addEventListener("click",fn); el.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fn(); } }); };
 activate($("#rc-sales"), ()=>goReport("sales"));
 activate($("#rc-inv"), ()=>goReport("inv"));
