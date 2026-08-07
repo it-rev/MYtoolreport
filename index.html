@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.7.9</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.0</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -618,10 +618,13 @@ function parseLocationMaster(aoa){
   if(hi<0) hi=0;
   const H = headerMap(aoa[hi]);
   const ci = (H["STORECODE"]!=null?H["STORECODE"]:0), ni = (H["STORE NAME"]!=null?H["STORE NAME"]:1), bi = (H["BANNER"]!=null?H["BANNER"]:2);
+  // optional "Palexy" flag column (Y/N) -> which stores are included in the Palexy Report
+  let pi = -1; for(const k in H){ if(k.replace(/\s+/g,"").indexOf("PALEXY")>=0){ pi=H[k]; break; } }
+  const _yes = v => { const x=trim(v).toUpperCase(); return x==="Y"||x==="YES"||x==="TRUE"||x==="1"; };
   const map = new Map();
   for(let r=hi+1;r<aoa.length;r++){ const row=aoa[r]; if(!row) continue; const code=trim(row[ci]); if(!code) continue;
-    map.set(code, {name:trim(row[ni]), banner:trim(row[bi])}); }
-  return { map, count: map.size };
+    map.set(code, {name:trim(row[ni]), banner:trim(row[bi]), palexy: pi>=0 ? _yes(row[pi]) : false}); }
+  return { map, count: map.size, hasPalexy: pi>=0 };
 }
 
 /* ---------- output columns (from "Transaction Number" onward) ---------- */
@@ -1053,6 +1056,9 @@ function fmtTime12(v){
 // salesFiles = e-point raw [{name,aoa}]. Returns {cols, rows} in the 16-col TH template.
 function transformPalexyTH(salesFiles, itemMaster, opts){
   opts=opts||{}; const KEEP=new Set((opts.keepTxn||["C","R"]).map(x=>String(x).toUpperCase()));
+  // Palexy is store-gated: raw LOCATION (store code) -> Location Master; keep only stores whose "Palexy" column = Y.
+  // Filtering is active only when a Location Master is supplied (opts.loc); otherwise all stores pass (tests).
+  const locMap = (opts.loc && opts.loc.map) ? opts.loc.map : null;
   const rows=[]; const B="";
   for(const sf of salesFiles){
     const aoa=sf.aoa;
@@ -1084,6 +1090,7 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
       const dt=parseDate(row[iDATE]);
       const dstr = dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : "";
       const store=trim(row[iLOC]), sales=trim(row[iSALES]), tm=fmtTime12(row[iTIME]);
+      if(locMap){ const lm=locMap.get(store); if(!lm || !lm.palexy) continue; }  // store-gate: include only stores flagged Palexy=Y in Location Master
       if(im){
         const catCode = (im.brand&&im.gender) ? im.brand+"-"+im.gender : B;
         const cateName = (im.brand&&im.gender&&im.category) ? im.brand+"-"+im.gender+"-"+im.category : B;
@@ -1158,7 +1165,7 @@ const I18N = {
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
     "shopify.title":"Update Online Info (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
     "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master has no \"Palexy\" column. Add a Palexy column (Y/N) and mark the stores to include in the Palexy Report.","valid.palexy.nostore":"No stores are flagged Palexy = Y in the Location Master.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "pdf.generated":"Generated {0}",
@@ -1214,7 +1221,7 @@ const I18N = {
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
     "shopify.title":"อัปเดตข้อมูล Online (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
     "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master ไม่มีคอลัมน์ \"Palexy\" — เพิ่มคอลัมน์ Palexy (Y/N) แล้วระบุสาขาที่ต้องการเข้า Palexy Report","valid.palexy.nostore":"ไม่มีสาขาที่ตั้งค่า Palexy = Y ใน Location Master","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "pdf.generated":"สร้างเมื่อ {0}",
@@ -1403,12 +1410,14 @@ async function addRaw(fileList){
   renderRawList(); refreshState(); persist();
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));  // one popup for all rejected files
 }
+function clearItem(){ state.item=null; renderList("#list-item",[],false); const i=$("#in-item"); if(i) i.value=""; updateHome(); refreshState(); persist(); }
+function clearLoc(){ state.loc=null; renderList("#list-loc",[],false); const i=$("#in-loc"); if(i) i.value=""; updateHome(); refreshState(); persist(); }
 async function setItem(f){
   let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.itemerr")); return; }
   const aoa=sheetAoA(wb,["ITEM MASTER","Sheet1"]); const vr=validateItemMaster(aoa);
   if(!vr.ok){ alertBad("valid.item", f.name, vr.missing); return; }
   state.item={name:f.name, data:parseItemMaster(aoa)};
-  renderList("#list-item",[{name:`${f.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
+  renderList("#list-item",[{name:`${f.name} • ${fmtInt(state.item.data.count)} SKU`}],true,()=>clearItem());
   updateHome(); refreshState(); persist();
 }
 async function setLoc(f){
@@ -1416,7 +1425,7 @@ async function setLoc(f){
   const aoa=sheetAoA(wb,["LOCATION MASTER","Sheet1"]); const vr=validateLocationMaster(aoa);
   if(!vr.ok){ alertBad("valid.loc", f.name, vr.missing); return; }
   state.loc={name:f.name, data:parseLocationMaster(aoa)};
-  renderList("#list-loc",[{name:`${f.name} • ${fmtInt(state.loc.data.count)}`}],false);
+  renderList("#list-loc",[{name:`${f.name} • ${fmtInt(state.loc.data.count)}`}],true,()=>clearLoc());
   updateHome(); refreshState(); persist();
 }
 function wireDrop(dropId, inputId, handler, multi){
@@ -1622,7 +1631,7 @@ function buildSalesPreview(rep){
   }
   if(state.raw.sales.length>0){   // Palexy TH = e-point only
     tabs.push({ key:"palexy", label:t("prev.tab.palexy"), render:()=>{
-      const p=transformPalexyTH(state.raw.sales, state.item.data, {});
+      const p=transformPalexyTH(state.raw.sales, state.item.data, {loc: state.loc.data});
       renderPreviewTable(p.cols, p.rows, palFmt);
     }});
   }
@@ -1704,8 +1713,11 @@ function exportXlsx(){
 function exportPalexy(){
   if(state.mode!=="sales") return;
   if(!state.raw.sales.length){ toast(t("valid.palexyth"),4000); return; }
-  const rep=transformPalexyTH(state.raw.sales, state.item.data, {});
-  if(!rep.rows.length){ toast(t("toast.err","no e-point rows"),3000); return; }
+  const rep=transformPalexyTH(state.raw.sales, state.item.data, {loc: state.loc.data});
+  if(!rep.rows.length){
+    const hasCol = !!(state.loc && state.loc.data && state.loc.data.hasPalexy);
+    alertModal(t("valid.title"), t(hasCol ? "valid.palexy.nostore" : "valid.palexy.nocol")); return;   // Alert (not toast); no empty file exported
+  }
   const iDate=rep.cols.indexOf("Date");
   const groups=new Map();
   rep.rows.forEach(r=>{ const key=String(r[iDate]||"").trim()||"__NODATE__"; if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
@@ -1823,8 +1835,8 @@ function applySnapshot(snap){
   state.shopify=(snap.shopify&&typeof snap.shopify==="object")?{hoka:snap.shopify.hoka||null,rev:snap.shopify.rev||null,files:Array.isArray(snap.shopify.files)?snap.shopify.files:[]}:{hoka:null,rev:null,files:[]};
   try{ rebuildShopifyMaps(); }catch(e){}
   state.report=snap.report||null; state.mode=snap.mode||null; state.view=snap.view||"home";
-  if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],false);
-  if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],false);
+  if(state.item&&state.item.data) renderList("#list-item",[{name:`${state.item.name} • ${fmtInt(state.item.data.count)} SKU`}],true,()=>clearItem());
+  if(state.loc&&state.loc.data)   renderList("#list-loc",[{name:`${state.loc.name} • ${fmtInt(state.loc.data.count)}`}],true,()=>clearLoc());
   applyStatic();
   if(state.view==="report" && state.mode){
     $("#view-home").classList.remove("active"); $("#view-report").classList.add("active");
