@@ -1165,7 +1165,7 @@ const I18N = {
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
     "shopify.title":"Update Online Info (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
     "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master has no \"Palexy\" column. Add a Palexy column (Y/N) and mark the stores to include in the Palexy Report.","valid.palexy.nostore":"No stores are flagged Palexy = Y in the Location Master.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report MY downloaded • {0} rows","toast.palexyth.split":"Palexy Report MY • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report MY needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master has no \"Palexy\" column. Add a Palexy column (Y/N) and mark the stores to include in the Palexy Report.","valid.palexy.nostore":"No stores are flagged Palexy = Y in the Location Master.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "pdf.generated":"Generated {0}",
@@ -1221,7 +1221,7 @@ const I18N = {
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
     "shopify.title":"อัปเดตข้อมูล Online (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
     "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
-    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report (TH) downloaded • {0} rows","toast.palexyth.split":"Palexy Report (TH) • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report (TH Template) needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master ไม่มีคอลัมน์ \"Palexy\" — เพิ่มคอลัมน์ Palexy (Y/N) แล้วระบุสาขาที่ต้องการเข้า Palexy Report","valid.palexy.nostore":"ไม่มีสาขาที่ตั้งค่า Palexy = Y ใน Location Master","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
+    "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report MY downloaded • {0} rows","toast.palexyth.split":"Palexy Report MY • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report MY needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master ไม่มีคอลัมน์ \"Palexy\" — เพิ่มคอลัมน์ Palexy (Y/N) แล้วระบุสาขาที่ต้องการเข้า Palexy Report","valid.palexy.nostore":"ไม่มีสาขาที่ตั้งค่า Palexy = Y ใน Location Master","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
     "pdf.generated":"สร้างเมื่อ {0}",
@@ -1708,7 +1708,7 @@ function exportXlsx(){
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   XLSX.writeFile(wb, `${cfg.fileTag}_${tag}.xlsx`, {compression:true}); toast(t("toast.dl"));
 }
-// Palexy Report (TH Template): 16-col Thai POS shape, e-point ONLY (no BRP/online).
+// Palexy Report MY: 16-col POS shape, e-point ONLY (no BRP/online).
 // Split into one .xlsx per Date (all stores of that date together), zipped.
 function exportPalexy(){
   if(state.mode!=="sales") return;
@@ -1731,11 +1731,11 @@ function exportPalexy(){
   if(groups.size===1){   // single date -> plain xlsx
     const [key,rws]=[...groups.entries()][0];
     const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
-    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Palexy Report TH_${safe}.xlsx`);
+    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Palexy Report MY_${safe}.xlsx`);
   } else {              // multiple dates -> one file per date, zipped
     const files=[...groups.entries()].map(([key,rws])=>{ const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
-      return {name:`Palexy Report TH_${safe}.xlsx`, data:mk(rws)}; });
-    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report TH_${tag}.zip`);
+      return {name:`Palexy Report MY_${safe}.xlsx`, data:mk(rws)}; });
+    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${tag}.zip`);
   }
   toast(t("toast.palexyth.split", fmtInt(groups.size), fmtInt(rep.rows.length)));
 }
