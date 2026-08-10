@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.0</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.1</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1732,10 +1732,14 @@ function exportPalexy(){
     const [key,rws]=[...groups.entries()][0];
     const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
     downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Palexy Report MY_${safe}.xlsx`);
-  } else {              // multiple dates -> one file per date, zipped
+  } else {              // multiple dates -> one file per date, zipped; zip name shows the data date range
     const files=[...groups.entries()].map(([key,rws])=>{ const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
       return {name:`Palexy Report MY_${safe}.xlsx`, data:mk(rws)}; });
-    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${tag}.zip`);
+    const sk=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : 0; };  // DD/MM/YYYY -> sortable
+    const dated=[...groups.keys()].filter(k=>k!=="__NODATE__").sort((a,b)=>sk(a)-sk(b));
+    const rng = dated.length ? (dated.length===1 ? dated[0].replace(/\//g,"-")
+                : dated[0].replace(/\//g,"-")+"_to_"+dated[dated.length-1].replace(/\//g,"-")) : tag;
+    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${rng}.zip`);
   }
   toast(t("toast.palexyth.split", fmtInt(groups.size), fmtInt(rep.rows.length)));
 }
