@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.3</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.4</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1415,8 +1415,10 @@ function exportOnlineByDelivery(){
   if(groups.size===1){ const [key,rws]=[...groups.entries()][0]; const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
     downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Online by Delivery Date_${lab}.xlsx`);
   } else {
+    const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
     const files=[...groups.entries()].map(([key,rws])=>{ const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
-      return {name:`Online by Delivery Date_${lab}.xlsx`, data:mk(rws)}; });
+      const folder = key==="__NODATE__" ? "" : (monthFolder(key)+"/");   // group daily files into month folders inside the zip
+      return {name:`${folder}Online by Delivery Date_${lab}.xlsx`, data:mk(rws)}; });
     downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
   }
   toast(t("toast.onlinedeliv", fmtInt(groups.size), fmtInt(total)));
