@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.4</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.5</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1370,58 +1370,84 @@ function onlineSummaryAoA(rows, H){
   aoa.push(["Total", tb, r2(tn)]);
   return aoa;
 }
+// build the BRP-style data worksheet (header + rows, auto column widths)
+function onlineDataSheet(rows, header){
+  const ws=XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
+  return ws;
+}
+// build the styled Collection-Detail "Summary" worksheet (REV navy header + borders + Total highlight)
+function onlineSummarySheet(rows, header){
+  const sAoa=onlineSummaryAoA(rows, header);
+  const sws=XLSX.utils.aoa_to_sheet(sAoa);
+  sws["!cols"]=[{wch:52},{wch:9},{wch:15}];
+  sws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:2}}];
+  const NAVY="0F2A4A", WHITE="FFFFFF", LINE="D0D7E2", ZEBRA="F5F7FA", TOT="FCE7D6";
+  const thin={style:"thin",color:{rgb:LINE}}, med={style:"medium",color:{rgb:NAVY}};
+  const box={top:thin,bottom:thin,left:thin,right:thin};
+  const put=(addr,st)=>{ if(!sws[addr]) sws[addr]={t:"s",v:""}; sws[addr].s=st; };
+  put("A1",{font:{bold:true,sz:13,color:{rgb:NAVY}},alignment:{horizontal:"center",vertical:"center"}});
+  [["A2","left"],["B2","center"],["C2","center"]].forEach(([a,h])=>put(a,{font:{bold:true,color:{rgb:WHITE}},fill:{fgColor:{rgb:NAVY}},alignment:{horizontal:h,vertical:"center"},border:box}));
+  for(let r=2;r<sAoa.length;r++){ const R=r+1, isTot=(r===sAoa.length-1);
+    const bg = isTot ? TOT : (r%2===1 ? ZEBRA : WHITE);
+    put("A"+R,{border:isTot?{...box,top:med}:box,fill:{fgColor:{rgb:bg}},font:{bold:isTot,color:{rgb:NAVY}},alignment:{horizontal:"left"}});
+    put("B"+R,{border:{...box,top:isTot?med:thin},fill:{fgColor:{rgb:bg}},font:{bold:isTot},alignment:{horizontal:"center"}});
+    put("C"+R,{border:{...box,top:isTot?med:thin},fill:{fgColor:{rgb:bg}},font:{bold:isTot},alignment:{horizontal:"right"}});
+    const b=sws["B"+R]; if(b&&typeof b.v==="number"){b.z="0";b.t="n";}
+    const c=sws["C"+R]; if(c&&typeof c.v==="number"){c.z="#,##0.00";c.t="n";}
+  }
+  return sws;
+}
 function exportOnlineByDelivery(){
   if(state.mode!=="sales"||!state.online.length) return;
   const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
-  let header=null; const groups=new Map();
+  let header=null; const dayGroups=new Map(); let total=0;
+  const pNoDeliv=[], pRetAfter=[], pRetBefore=[];   // Problem Orders, split by category
+  const dnum=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : NaN; };  // DD/MM/YYYY -> comparable int
   state.online.forEach(bf=>{
     const e=enrichBrpShopify(bf.aoa, maps);   // full BRP layout, dates normalized DD/MM/YYYY (same as Online info Updated)
     if(!header) header=e.header;
     const iDeliv=e.header.findIndex(h=>/delivery date/i.test(String(h==null?"":h)));
-    e.rows.forEach(r=>{ const key=(iDeliv>=0 && r[iDeliv]!=null && String(r[iDeliv]).trim()) ? String(r[iDeliv]).trim() : "__NODATE__";
-      if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
+    const iRet=e.header.findIndex(h=>/returned date/i.test(String(h==null?"":h)));
+    e.rows.forEach(r=>{ total++;
+      const dRaw=(iDeliv>=0 && r[iDeliv]!=null)?String(r[iDeliv]).trim():"";
+      const rRaw=(iRet>=0 && r[iRet]!=null)?String(r[iRet]).trim():"";
+      const hasD=!!dRaw, hasR=!!rRaw;
+      const retBefore = hasD && hasR && (()=>{ const dv=dnum(dRaw), rv=dnum(rRaw); return (!isNaN(dv)&&!isNaN(rv)&&rv<dv); })();
+      // Problem Orders categories (mutually exclusive): no delivery date -> No Delivery Date (incl. returned w/o delivery);
+      // has delivery + returned -> Returned Before/After Delivery
+      if(!hasD) pNoDeliv.push(r);
+      else if(hasR){ if(retBefore) pRetBefore.push(r); else pRetAfter.push(r); }
+      // Daily file (by delivery date). Drop only when Returned is BEFORE Delivery (Returned >= Delivery = normal).
+      if(hasD && !retBefore){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
+    });
   });
-  if(!header || !groups.size){ toast(t("toast.err","no BRP rows"),3000); return; }
+  const problemCount = pNoDeliv.length+pRetAfter.length+pRetBefore.length;
+  if(!header || (!dayGroups.size && !problemCount)){ toast(t("toast.err","no BRP rows"),3000); return; }
   const mk=(rws)=>{ const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([header, ...rws]);
-    ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
-    XLSX.utils.book_append_sheet(wb, ws, "BRP");
-    // Summary sheet (Collection Detail)
-    const sAoa=onlineSummaryAoA(rws, header);
-    const sws=XLSX.utils.aoa_to_sheet(sAoa);
-    sws["!cols"]=[{wch:52},{wch:9},{wch:15}];
-    sws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:2}}];   // merge "Collection Detail" title across A1:C1
-    // ---- table styling (xlsx-js-style) : REV navy header + bordered rows + highlighted Total ----
-    const NAVY="0F2A4A", WHITE="FFFFFF", LINE="D0D7E2", ZEBRA="F5F7FA", TOT="FCE7D6";
-    const thin={style:"thin",color:{rgb:LINE}}, med={style:"medium",color:{rgb:NAVY}};
-    const box={top:thin,bottom:thin,left:thin,right:thin};
-    const put=(addr,st)=>{ if(!sws[addr]) sws[addr]={t:"s",v:""}; sws[addr].s=st; };
-    put("A1",{font:{bold:true,sz:13,color:{rgb:NAVY}},alignment:{horizontal:"center",vertical:"center"}});
-    [["A2","left"],["B2","center"],["C2","center"]].forEach(([a,h])=>put(a,{font:{bold:true,color:{rgb:WHITE}},fill:{fgColor:{rgb:NAVY}},alignment:{horizontal:h,vertical:"center"},border:box}));
-    for(let r=2;r<sAoa.length;r++){ const R=r+1, isTot=(r===sAoa.length-1);
-      const bg = isTot ? TOT : (r%2===1 ? ZEBRA : WHITE);
-      put("A"+R,{border:box,fill:{fgColor:{rgb:bg}},font:{bold:isTot,color:{rgb:NAVY}},alignment:{horizontal:"left"}});
-      put("B"+R,{border:{...box,top:isTot?med:thin},fill:{fgColor:{rgb:bg}},font:{bold:isTot},alignment:{horizontal:"center"}});
-      put("C"+R,{border:{...box,top:isTot?med:thin},fill:{fgColor:{rgb:bg}},font:{bold:isTot},alignment:{horizontal:"right"}});
-      if(isTot){ put("A"+R,{border:{...box,top:med},fill:{fgColor:{rgb:bg}},font:{bold:true,color:{rgb:NAVY}},alignment:{horizontal:"left"}}); }
-      const b=sws["B"+R]; if(b&&typeof b.v==="number"){b.z="0";b.t="n";}
-      const c=sws["C"+R]; if(c&&typeof c.v==="number"){c.z="#,##0.00";c.t="n";}
-    }
-    XLSX.utils.book_append_sheet(wb, sws, "Summary");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(rws, header), "BRP");
+    XLSX.utils.book_append_sheet(wb, onlineSummarySheet(rws, header), "Summary");
+    return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
+  // Problem Orders file: Summary (all) + 3 category sheets
+  const mkProblem=(noDeliv,retAfter,retBefore)=>{ const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, onlineSummarySheet([...noDeliv,...retAfter,...retBefore], header), "Summary");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(noDeliv,   header), "No Delivery Date");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retAfter,  header), "Returned After Delivery");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retBefore, header), "Returned Before Delivery");
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  let total=0; groups.forEach(rws=>total+=rws.length);
-  if(groups.size===1){ const [key,rws]=[...groups.entries()][0]; const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
-    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Online by Delivery Date_${lab}.xlsx`);
+  const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
+  const outFiles=[];   // {folder, name, data}
+  [...dayGroups.entries()].forEach(([key,rws])=>outFiles.push({ folder: monthFolder(key)+"/", name:`Online by Delivery Date_${safe(key)}.xlsx`, data:mk(rws) }));
+  if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pRetAfter,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
+  if(outFiles.length===1){ const o=outFiles[0];
+    downloadBlob(new Blob([o.data],{type:"application/octet-stream"}), o.name);
   } else {
-    const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
-    const files=[...groups.entries()].map(([key,rws])=>{ const lab=key==="__NODATE__"?"No Delivery Date":safe(key);
-      const folder = key==="__NODATE__" ? "" : (monthFolder(key)+"/");   // group daily files into month folders inside the zip
-      return {name:`${folder}Online by Delivery Date_${lab}.xlsx`, data:mk(rws)}; });
+    const files=outFiles.map(o=>({ name:o.folder+o.name, data:o.data }));
     downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
   }
-  toast(t("toast.onlinedeliv", fmtInt(groups.size), fmtInt(total)));
+  toast(t("toast.onlinedeliv", fmtInt(outFiles.length), fmtInt(total)));
 }
 async function addRaw(fileList){
   const validate = state.mode==="sales" ? validateSalesFile : validateInventoryFile;
