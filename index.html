@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.5</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.6</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1143,7 +1143,7 @@ const I18N = {
     "online.title":"Online Sales (BRP)","online.desc":"Optional — marketplace orders (Order Breakdown export); appended to this report",
     "valid.brp":"\"{0}\" is not a valid Order Breakdown online-sales file.\nMissing column(s): {1}\n\nExpected columns: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM).",
     "shopify.title":"Update Online Info (Paid/Delivery)","shopify.desc":"Optional — fill Paid/Delivery Date on Shopify orders; upload both Hoka + Rev order exports (.csv)",
-    "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\" or \"Rev\".",
+    "valid.shopify":"\"{0}\" is not a valid Shopify orders export — need columns Name / Paid at / Fulfilled at, and the filename must contain \"Hoka\", \"Rev\", or \"RR\".",
     "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report MY downloaded • {0} rows","toast.palexyth.split":"Palexy Report MY • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report MY needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master has no \"Palexy\" column. Add a Palexy column (Y/N) and mark the stores to include in the Palexy Report.","valid.palexy.nostore":"No stores are flagged Palexy = Y in the Location Master.","btn.brpupd":"Online info Updated","toast.brpupd":"Online info Updated downloaded • {0} Shopify rows filled",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
@@ -1199,7 +1199,7 @@ const I18N = {
     "online.title":"ยอดขายออนไลน์ (BRP)","online.desc":"ไม่บังคับ — ออเดอร์ marketplace (ไฟล์ Order Breakdown) ต่อท้ายในรายงานนี้",
     "valid.brp":"ไฟล์ \"{0}\" ไม่ใช่ไฟล์ Order Breakdown ที่ถูกต้อง\nคอลัมน์ที่ขาด: {1}\n\nต้องมีคอลัมน์: Order ID, Store, Model, Order Date, Quantity, Product Amount (RM)",
     "shopify.title":"อัปเดตข้อมูล Online (Paid/Delivery)","shopify.desc":"ไม่บังคับ — เติม Paid/Delivery Date ให้ออเดอร์ Shopify; อัปโหลดไฟล์ export ทั้ง Hoka + Rev (.csv)",
-    "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\" หรือ \"Rev\"",
+    "valid.shopify":"ไฟล์ \"{0}\" ไม่ใช่ Shopify orders export ที่ถูกต้อง — ต้องมี Name / Paid at / Fulfilled at และชื่อไฟล์ต้องมีคำว่า \"Hoka\", \"Rev\" หรือ \"RR\"",
     "btn.onlinedeliv":"Online by Delivery Date","toast.onlinedeliv":"Online by Delivery Date • {0} file(s) • {1} rows","toast.palexyth":"Palexy Report MY downloaded • {0} rows","toast.palexyth.split":"Palexy Report MY • {0} file(s) by date • {1} rows","valid.palexyth":"Palexy Report MY needs Raw Sales (e-point) — import an e-point file first.","valid.palexy.nocol":"Location Master ไม่มีคอลัมน์ \"Palexy\" — เพิ่มคอลัมน์ Palexy (Y/N) แล้วระบุสาขาที่ต้องการเข้า Palexy Report","valid.palexy.nostore":"ไม่มีสาขาที่ตั้งค่า Palexy = Y ใน Location Master","btn.brpupd":"Online info Updated","toast.brpupd":"ดาวน์โหลด Online info Updated แล้ว • เติม Shopify {0} แถว",
     "btn.palexy":"Palexy Report MY","btn.pdf":"Sales Daily Report (Dashboard)",
     "btn.export.sales":"Sales Daily Report (Xlsx)","btn.export.inv":"Inventory Report (Xlsx)","btn.pdf.sales":"Sales Daily Report (Dashboard)","btn.pdf.inv":"Inventory Report (Dashboard)",
@@ -1296,7 +1296,7 @@ async function addShopify(fileList){  // Shopify orders_export (.csv) — fills 
     let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.readerr", f.name)); continue; }
     const map=parseShopifyOrders(sheetAoA(wb));
     const low=f.name.toLowerCase();
-    const which = /hoka/.test(low) ? "hoka" : (/rev/.test(low) ? "rev" : null);
+    const which = /hoka/.test(low) ? "hoka" : (/rev|rr/.test(low) ? "rev" : null);   // Rev store filename may use "Rev" or "RR"
     if(!which || !map.size){ bad.push(t("valid.shopify", f.name)); continue; }
     // keep each file's own map so deleting a file can rebuild the store map exactly
     state.shopify.files=(state.shopify.files||[]).filter(x=>x.name!==f.name);   // same filename re-upload replaces
@@ -1402,7 +1402,7 @@ function exportOnlineByDelivery(){
   if(state.mode!=="sales"||!state.online.length) return;
   const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
   let header=null; const dayGroups=new Map(); let total=0;
-  const pNoDeliv=[], pRetAfter=[], pRetBefore=[];   // Problem Orders, split by category
+  const pNoDeliv=[], pRetAfter=[], pRetSame=[], pRetBefore=[];   // Problem Orders, split by category
   const dnum=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : NaN; };  // DD/MM/YYYY -> comparable int
   state.online.forEach(bf=>{
     const e=enrichBrpShopify(bf.aoa, maps);   // full BRP layout, dates normalized DD/MM/YYYY (same as Online info Updated)
@@ -1413,26 +1413,27 @@ function exportOnlineByDelivery(){
       const dRaw=(iDeliv>=0 && r[iDeliv]!=null)?String(r[iDeliv]).trim():"";
       const rRaw=(iRet>=0 && r[iRet]!=null)?String(r[iRet]).trim():"";
       const hasD=!!dRaw, hasR=!!rRaw;
-      const retBefore = hasD && hasR && (()=>{ const dv=dnum(dRaw), rv=dnum(rRaw); return (!isNaN(dv)&&!isNaN(rv)&&rv<dv); })();
-      // Problem Orders categories (mutually exclusive): no delivery date -> No Delivery Date (incl. returned w/o delivery);
-      // has delivery + returned -> Returned Before/After Delivery
-      if(!hasD) pNoDeliv.push(r);
-      else if(hasR){ if(retBefore) pRetBefore.push(r); else pRetAfter.push(r); }
-      // Daily file (by delivery date). Drop only when Returned is BEFORE Delivery (Returned >= Delivery = normal).
-      if(hasD && !retBefore){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
+      // returned-vs-delivery: -1 before, 0 same day, 1 after (unparseable -> treat as after / keep in daily)
+      const retCmp = (hasD&&hasR) ? (()=>{ const dv=dnum(dRaw), rv=dnum(rRaw); if(isNaN(dv)||isNaN(rv)) return 1; return rv<dv?-1:(rv===dv?0:1); })() : null;
+      // Problem Orders categories (mutually exclusive)
+      if(!hasD) pNoDeliv.push(r);                 // no delivery date (incl. returned w/o delivery)
+      else if(hasR){ if(retCmp<0) pRetBefore.push(r); else if(retCmp===0) pRetSame.push(r); else pRetAfter.push(r); }
+      // Daily file: keep only when NO returned, or Returned strictly AFTER Delivery (same-day & before are dropped)
+      if(hasD && (!hasR || retCmp>0)){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
     });
   });
-  const problemCount = pNoDeliv.length+pRetAfter.length+pRetBefore.length;
+  const problemCount = pNoDeliv.length+pRetAfter.length+pRetSame.length+pRetBefore.length;
   if(!header || (!dayGroups.size && !problemCount)){ toast(t("toast.err","no BRP rows"),3000); return; }
   const mk=(rws)=>{ const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, onlineDataSheet(rws, header), "BRP");
     XLSX.utils.book_append_sheet(wb, onlineSummarySheet(rws, header), "Summary");
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   // Problem Orders file: Summary (all) + 3 category sheets
-  const mkProblem=(noDeliv,retAfter,retBefore)=>{ const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, onlineSummarySheet([...noDeliv,...retAfter,...retBefore], header), "Summary");
+  const mkProblem=(noDeliv,retAfter,retSame,retBefore)=>{ const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, onlineSummarySheet([...noDeliv,...retAfter,...retSame,...retBefore], header), "Summary");
     XLSX.utils.book_append_sheet(wb, onlineDataSheet(noDeliv,   header), "No Delivery Date");
     XLSX.utils.book_append_sheet(wb, onlineDataSheet(retAfter,  header), "Returned After Delivery");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retSame,   header), "Returned Same Day");
     XLSX.utils.book_append_sheet(wb, onlineDataSheet(retBefore, header), "Returned Before Delivery");
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
@@ -1440,7 +1441,7 @@ function exportOnlineByDelivery(){
   const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
   const outFiles=[];   // {folder, name, data}
   [...dayGroups.entries()].forEach(([key,rws])=>outFiles.push({ folder: monthFolder(key)+"/", name:`Online by Delivery Date_${safe(key)}.xlsx`, data:mk(rws) }));
-  if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pRetAfter,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
+  if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pRetAfter,pRetSame,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
   if(outFiles.length===1){ const o=outFiles[0];
     downloadBlob(new Blob([o.data],{type:"application/octet-stream"}), o.name);
   } else {
