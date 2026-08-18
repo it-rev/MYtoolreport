@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.6</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.7</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1774,26 +1774,34 @@ function exportPalexy(){
   const iDate=rep.cols.indexOf("Date");
   const groups=new Map();
   rep.rows.forEach(r=>{ const key=String(r[iDate]||"").trim()||"__NODATE__"; if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(r); });
-  const mk=(rws)=>{ const ws=XLSX.utils.aoa_to_sheet([rep.cols, ...rws]);
+  const palexyWS=(rws)=>{ const ws=XLSX.utils.aoa_to_sheet([rep.cols, ...rws]);
     const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
     for(let r=1;r<=rws.length;r++){ setZ(r,10,"#,##0.00"); setZ(r,11,"0"); setZ(r,12,"#,##0.00"); }
     ws["!cols"]=rep.cols.map(h=>({wch:Math.max(9,Math.min(28,String(h).length+3))})); ws["!freeze"]={xSplit:0,ySplit:1};
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "POS Data");
+    return ws; };
+  const mk=(rws)=>{ const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, palexyWS(rws), "POS Data");
+    return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
+  // per-store summary file: one sheet per store (Code + Name), full 16-col transactions (all dates)
+  const mkByStore=()=>{ const wb=XLSX.utils.book_new();
+    const iStore=rep.cols.indexOf("Store No_");
+    const locMap=(state.loc && state.loc.data && state.loc.data.map) ? state.loc.data.map : null;
+    const byStore=new Map();
+    rep.rows.forEach(r=>{ const code=String(r[iStore]||"").trim(); if(!byStore.has(code)) byStore.set(code,[]); byStore.get(code).push(r); });
+    const used=new Set();
+    const sheetName=(code)=>{ const nm=(locMap && locMap.get(code)) ? locMap.get(code).name : "";
+      let base=(code+(nm?" "+nm:"")).replace(/[:\\\/?*\[\]]/g,"-").slice(0,31).trim()||"Store";
+      let name=base, i=2; while(used.has(name.toLowerCase())){ const suf=" ("+i+")"; name=base.slice(0,31-suf.length)+suf; i++; } used.add(name.toLowerCase()); return name; };
+    [...byStore.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).forEach(([code,rws])=>{ XLSX.utils.book_append_sheet(wb, palexyWS(rws), sheetName(code)); });
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  if(groups.size===1){   // single date -> plain xlsx
-    const [key,rws]=[...groups.entries()][0];
-    const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
-    downloadBlob(new Blob([mk(rws)],{type:"application/octet-stream"}), `Palexy Report MY_${safe}.xlsx`);
-  } else {              // multiple dates -> one file per date, zipped; zip name shows the data date range
-    const files=[...groups.entries()].map(([key,rws])=>{ const safe=key==="__NODATE__"?"No Date":key.replace(/\//g,"-");
-      return {name:`Palexy Report MY_${safe}.xlsx`, data:mk(rws)}; });
-    const sk=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : 0; };  // DD/MM/YYYY -> sortable
-    const dated=[...groups.keys()].filter(k=>k!=="__NODATE__").sort((a,b)=>sk(a)-sk(b));
-    const rng = dated.length ? (dated.length===1 ? dated[0].replace(/\//g,"-")
-                : dated[0].replace(/\//g,"-")+"_to_"+dated[dated.length-1].replace(/\//g,"-")) : tag;
-    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${rng}.zip`);
-  }
+  const safeD=k=>k==="__NODATE__"?"No Date":k.replace(/\//g,"-");
+  const files=[...groups.entries()].map(([key,rws])=>({ name:`Palexy Report MY_${safeD(key)}.xlsx`, data:mk(rws) }));
+  files.push({ name:"Palexy Report MY_By Store.xlsx", data:mkByStore() });   // per-store summary (1 sheet per store)
+  const sk=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : 0; };
+  const dated=[...groups.keys()].filter(k=>k!=="__NODATE__").sort((a,b)=>sk(a)-sk(b));
+  const rng = dated.length ? (dated.length===1 ? dated[0].replace(/\//g,"-")
+              : dated[0].replace(/\//g,"-")+"_to_"+dated[dated.length-1].replace(/\//g,"-")) : tag;
+  downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${rng}.zip`);
   toast(t("toast.palexyth.split", fmtInt(groups.size), fmtInt(rep.rows.length)));
 }
 // Export the dashboard as PDF via browser print-to-PDF (crisp vector charts).
