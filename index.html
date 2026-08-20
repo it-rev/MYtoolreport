@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.8</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.9</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1407,7 +1407,7 @@ function exportOnlineByDelivery(){
   if(state.mode!=="sales"||!state.online.length) return;
   const maps={hoka:state.shopify.hoka, rev:state.shopify.rev};
   let header=null; const dayGroups=new Map(); let total=0;
-  const pNoDeliv=[], pBeforeCut=[], pRetAfter=[], pRetSame=[], pRetBefore=[];   // Problem Orders buckets
+  const pNoDeliv=[], pRetMissing=[], pBeforeCut=[], pRetAfter=[], pRetSame=[], pRetBefore=[];   // Problem Orders buckets
   const dnum=x=>{ const p=String(x).split("/"); return p.length===3 ? (+p[2])*10000+(+p[1])*100+(+p[0]) : NaN; };  // DD/MM/YYYY -> comparable int
   // === TEMPORARY business rule (added 2026-08): returns dated BEFORE this cutoff are excluded from the daily files ===
   // === and lumped into one "Returned Before <cutoff>" sheet. Remove RET_CUTOFF_N + its use when no longer needed.  ===
@@ -1417,24 +1417,28 @@ function exportOnlineByDelivery(){
     if(!header) header=e.header;
     const iDeliv=e.header.findIndex(h=>/delivery date/i.test(String(h==null?"":h)));
     const iRet=e.header.findIndex(h=>/returned date/i.test(String(h==null?"":h)));
+    const iStatus=e.header.findIndex(h=>/^status$/i.test(String(h==null?"":h).trim()));
     e.rows.forEach(r=>{ total++;
       const dRaw=(iDeliv>=0 && r[iDeliv]!=null)?String(r[iDeliv]).trim():"";
       const rRaw=(iRet>=0 && r[iRet]!=null)?String(r[iRet]).trim():"";
       const hasD=!!dRaw, hasR=!!rRaw;
+      const statusReturn = iStatus>=0 && /return/i.test(String(r[iStatus]==null?"":r[iStatus]));
+      const retMissing = statusReturn && !hasR;   // Status=Returned but Returned Date blank -> anomaly
       const dv=dnum(dRaw), rv=dnum(rRaw);
       const retFromCutoff = hasR ? (isNaN(rv) ? true : rv>=RET_CUTOFF_N) : null;   // Returned on/after 01/08/2026 (unparseable -> treat as on/after)
-      // Problem Orders categories (mutually exclusive)
+      // Problem Orders categories (mutually exclusive, priority top-down)
       if(!hasD) pNoDeliv.push(r);                       // no delivery date (incl. returned w/o delivery) -> No Delivery Date
+      else if(retMissing) pRetMissing.push(r);          // Status=Returned & no Returned Date (has delivery) -> Returned Missing Date
       else if(hasR){
         if(!retFromCutoff) pBeforeCut.push(r);          // returned before cutoff -> single sheet
         else { const cmp = (isNaN(dv)||isNaN(rv)) ? 1 : (rv<dv?-1:(rv===dv?0:1));   // returned on/after cutoff -> split by R vs D
           if(cmp<0) pRetBefore.push(r); else if(cmp===0) pRetSame.push(r); else pRetAfter.push(r); }
       }
-      // Daily file: keep when NO returned, OR Returned on/after cutoff (cutoff rule only; ignores R vs D)
-      if(hasD && (!hasR || retFromCutoff)){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
+      // Daily file: keep when has delivery, NOT a Returned-missing-date anomaly, and (no returned OR returned on/after cutoff)
+      if(hasD && !retMissing && (!hasR || retFromCutoff)){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
     });
   });
-  const problemCount = pNoDeliv.length+pBeforeCut.length+pRetAfter.length+pRetSame.length+pRetBefore.length;
+  const problemCount = pNoDeliv.length+pRetMissing.length+pBeforeCut.length+pRetAfter.length+pRetSame.length+pRetBefore.length;
   if(!header || (!dayGroups.size && !problemCount)){ toast(t("toast.err","no BRP rows"),3000); return; }
   const mk=(rws)=>{ const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, onlineDataSheet(rws, header), "BRP");
@@ -1442,20 +1446,21 @@ function exportOnlineByDelivery(){
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   // Problem Orders file: Summary (all) + 3 category sheets
   const RET_NOTE="หมายเหตุ (เงื่อนไขชั่วคราว): แยก Returned ด้วยวันตัด 01/08/2026 — Returned ก่อนวันนี้ไม่เข้าไฟล์รายวัน (Returns split by cutoff 01/08/2026, temporary)";
-  const mkProblem=(noDeliv,beforeCut,retAfter,retSame,retBefore)=>{ const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, onlineDataSheet(noDeliv,   header), "No Delivery Date");
-    XLSX.utils.book_append_sheet(wb, onlineDataSheet(beforeCut, header), "Returned Before 01-08-2026");
-    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retAfter,  header), "Returned After Delivery");
-    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retSame,   header), "Returned Same Day");
-    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retBefore, header), "Returned Before Delivery");
-    XLSX.utils.book_append_sheet(wb, onlineSummarySheet([...noDeliv,...beforeCut,...retAfter,...retSame,...retBefore], header, RET_NOTE), "Summary");   // Summary LAST
+  const mkProblem=(noDeliv,retMissing,beforeCut,retAfter,retSame,retBefore)=>{ const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(noDeliv,    header), "No Delivery Date");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retMissing, header), "Returned Missing Date");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(beforeCut,  header), "Returned Before 01-08-2026");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retAfter,   header), "Returned After Delivery");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retSame,    header), "Returned Same Day");
+    XLSX.utils.book_append_sheet(wb, onlineDataSheet(retBefore,  header), "Returned Before Delivery");
+    XLSX.utils.book_append_sheet(wb, onlineSummarySheet([...noDeliv,...retMissing,...beforeCut,...retAfter,...retSame,...retBefore], header, RET_NOTE), "Summary");   // Summary LAST
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
   const outFiles=[];   // {folder, name, data}
   [...dayGroups.entries()].forEach(([key,rws])=>outFiles.push({ folder: monthFolder(key)+"/", name:`Online by Delivery Date_${safe(key)}.xlsx`, data:mk(rws) }));
-  if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pBeforeCut,pRetAfter,pRetSame,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
+  if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pRetMissing,pBeforeCut,pRetAfter,pRetSame,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
   if(outFiles.length===1){ const o=outFiles[0];
     downloadBlob(new Blob([o.data],{type:"application/octet-stream"}), o.name);
   } else {
@@ -1639,7 +1644,8 @@ function lineChart(points,{}={}){
   const pts=points.map((p,i)=>`${xs[i].toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
   const area=`${pad},${(H-26)} ${pts} ${(W-pad)},${(H-26)}`;
   const dots=points.map((p,i)=>`<circle cx="${xs[i].toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.2" fill="#F37121"><title>${esc(p.label)}: ${fmtBaht(p.value)}</title></circle>`).join("");
-  const labels=points.map((p,i)=>`<text x="${xs[i].toFixed(1)}" y="${H-8}" text-anchor="middle" class="ax">${esc(p.label.slice(5))}</text>`).join("");
+  const lblStep=Math.max(1,Math.ceil(points.length/12));   // thin x-axis labels so they don't overlap on long ranges
+  const labels=points.map((p,i)=>((i%lblStep===0)||i===points.length-1)?`<text x="${xs[i].toFixed(1)}" y="${H-8}" text-anchor="middle" class="ax">${esc(p.label.slice(5))}</text>`:"").join("");
   return `<svg viewBox="0 0 ${W} ${H}" class="linec" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="revArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F37121" stop-opacity="0.30"/><stop offset="1" stop-color="#F37121" stop-opacity="0.02"/></linearGradient></defs><polyline points="${area}" fill="url(#revArea)" stroke="none"/><polyline points="${pts}" fill="none" stroke="#F37121" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${labels}</svg>`;
 }
 
