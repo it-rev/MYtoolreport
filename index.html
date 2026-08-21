@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.8.9</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.0</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1326,7 +1326,7 @@ function exportBrpUpdated(){
   ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BRP");
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, `Online info Updated_${tag}.xlsx`, {compression:true});
+  XLSX.writeFile(wb, stampName(`Online info Updated_${tag}.xlsx`), {compression:true});
   toast(t("toast.brpupd", fmtInt(matched)));
 }
 /* ---- minimal ZIP writer (store / no compression) for multi-file export ---- */
@@ -1346,6 +1346,9 @@ function makeZip(files){
   for(const c of central){ out.set(c,p); p+=c.length; }
   out.set(eocd,p); return out;
 }
+// append the EXPORT date-time to a filename (before extension) so files exported on different days/times never collide
+function nowStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0"); return `EX${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }   // EX = export marker
+function stampName(name){ const i=name.lastIndexOf("."); return i<0 ? name+"_"+nowStamp() : name.slice(0,i)+"_"+nowStamp()+name.slice(i); }
 function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},150); }
 // Online-only Sales report, split into one .xlsx per Delivery Date (+ "No Delivery Date"), zipped. Uses Shopify-enriched dates if uploaded.
 // Collection Detail summary for an Online-by-Delivery file: group by Store (Shopify -> +Payment Method),
@@ -1458,14 +1461,16 @@ function exportOnlineByDelivery(){
   const safe=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").slice(0,80);
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const monthFolder=k=>{ const p=String(k).split("/"); return p.length===3 ? (p[1]+"-"+p[2]) : ""; };  // DD/MM/YYYY -> MM-YYYY subfolder
+  const est=nowStamp();   // one export timestamp shared by the zip AND every file inside it
+  const withEst=(name)=>{ const i=name.lastIndexOf("."); return i<0 ? name+"_"+est : name.slice(0,i)+"_"+est+name.slice(i); };
   const outFiles=[];   // {folder, name, data}
   [...dayGroups.entries()].forEach(([key,rws])=>outFiles.push({ folder: monthFolder(key)+"/", name:`Online by Delivery Date_${safe(key)}.xlsx`, data:mk(rws) }));
   if(problemCount) outFiles.push({ folder:"", name:"Online by Delivery Date_Problem Orders.xlsx", data:mkProblem(pNoDeliv,pRetMissing,pBeforeCut,pRetAfter,pRetSame,pRetBefore) });   // problem file (Summary + 3 category sheets) at zip root
   if(outFiles.length===1){ const o=outFiles[0];
-    downloadBlob(new Blob([o.data],{type:"application/octet-stream"}), o.name);
+    downloadBlob(new Blob([o.data],{type:"application/octet-stream"}), withEst(o.name));
   } else {
-    const files=outFiles.map(o=>({ name:o.folder+o.name, data:o.data }));
-    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Online by Delivery Date_${tag}.zip`);
+    const files=outFiles.map(o=>({ name:o.folder+withEst(o.name), data:o.data }));   // stamp each inner file too (so extracted files never collide across exports)
+    downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), withEst(`Online by Delivery Date_${tag}.zip`));
   }
   toast(t("toast.onlinedeliv", fmtInt(outFiles.length), fmtInt(total)));
 }
@@ -1779,7 +1784,7 @@ function exportXlsx(){
     XLSX.utils.book_append_sheet(wb, uws, "Unmatched");
   }
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, `${cfg.fileTag}_${tag}.xlsx`, {compression:true}); toast(t("toast.dl"));
+  XLSX.writeFile(wb, stampName(`${cfg.fileTag}_${tag}.xlsx`), {compression:true}); toast(t("toast.dl"));
 }
 // Palexy Report MY: 16-col POS shape, e-point ONLY (no BRP/online).
 // Split into one .xlsx per Date (all stores of that date together), zipped.
@@ -1821,7 +1826,7 @@ function exportPalexy(){
   const dated=[...groups.keys()].filter(k=>k!=="__NODATE__").sort((a,b)=>sk(a)-sk(b));
   const rng = dated.length ? (dated.length===1 ? dated[0].replace(/\//g,"-")
               : dated[0].replace(/\//g,"-")+"_to_"+dated[dated.length-1].replace(/\//g,"-")) : tag;
-  downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), `Palexy Report MY_${rng}.zip`);
+  downloadBlob(new Blob([makeZip(files)],{type:"application/zip"}), stampName(`Palexy Report MY_${rng}.zip`));
   toast(t("toast.palexyth.split", fmtInt(groups.size), fmtInt(rep.rows.length)));
 }
 // Export the dashboard as PDF via browser print-to-PDF (crisp vector charts).
