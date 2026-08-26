@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.0</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.1</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -981,8 +981,12 @@ function parseShopifyOrders(aoa){
   const iName=gi("Name"), iPaid=gi("Paid at"), iFul=gi("Fulfilled at");
   for(let r=1;r<aoa.length;r++){ const row=aoa[r]; if(!row) continue;
     const name=trim(row[iName]); if(!name) continue;                 // skip line-item rows (blank Name)
-    const key=name.replace(/^#/,"").trim();
-    if(!map.has(key)) map.set(key, { paid: shopDate(row[iPaid]), deliv: shopDate(row[iFul]) });
+    const key=name.replace(/^#/,"").replace(/\s+/g,"").toUpperCase();   // normalized: no '#', no spaces, UPPERCASE
+    const obj={ paid: shopDate(row[iPaid]), deliv: shopDate(row[iFul]) };
+    if(!map.has(key)) map.set(key, obj);
+    // also index by the trailing order number — BRP may send the bare number ("1790") or the prefixed form ("#REVMY1790"/"#HOKA1089")
+    const dg=(key.match(/(\d+)\s*$/)||[])[1];
+    if(dg && dg!==key && !map.has(dg)) map.set(dg, obj);
   }
   return map;
 }
@@ -1009,8 +1013,9 @@ function enrichBrpShopify(brpAoa, maps){
     if(st.indexOf("shopify")>=0){
       stat.shopify++;
       const mp = st.indexOf("hoka")>=0 ? maps.hoka : (st.indexOf("rev")>=0 ? maps.rev : null);
-      const key = trim(src[iMkt]).replace(/^#/,"").trim();
-      const hit = (mp && key) ? mp.get(key) : null;
+      const key = trim(src[iMkt]).replace(/^#/,"").replace(/\s+/g,"").toUpperCase();   // same normalization as the Shopify map
+      let hit = (mp && key) ? mp.get(key) : null;
+      if(!hit && mp && key){ const dg=(key.match(/(\d+)\s*$/)||[])[1]; if(dg) hit = mp.get(dg); }   // fallback by trailing order number (handles BRP "1790" vs Shopify "#REVMY1790")
       if(hit){ stat.matched++; if(iPaid>=0) out[iPaid]=hit.paid; if(iDeliv>=0) out[iDeliv]=hit.deliv; }
     }
     dateCols.forEach(ci=>{ out[ci]=dmy(out[ci]); });   // all date columns -> DD/MM/YYYY
