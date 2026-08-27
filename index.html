@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.2</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.3</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -521,6 +521,9 @@ function locCode(v){ v=trim(v); const m=v.split(/\s*-\s*/); return m[0] ? m[0].t
 // SHIFTCODE = YYYYMMDD + shift digit(s), e.g. "202608011" = 2026-08-01 shift 1.
 // The raw DATE column is unreliable on some stores (it can hold the EXPORT date, not the sale date),
 // so the sale date is taken from SHIFTCODE. Returns null when the value is missing/malformed.
+// Non-merchandise STOCK codes that must never appear in the reports (they are not real products,
+// so they also showed up as "unmatched" against the Item Master). Add more codes here if needed.
+const EXCLUDE_STOCK = new Set(["SHPFEE01"]);   // SHPFEE01 = SHIPPING FEE (e-point), unused
 function shiftDate(v){
   const s=trim(v).replace(/\D/g,"");
   if(s.length<8) return null;
@@ -656,6 +659,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       // exclude non-sale lines: ITEM_NO blank/non-numeric, OR a POS system code
       // (STOCK starting with '#': #$$- payment, #DISC- discount, #SALE- tip, #CASH- cash in/out)
       if(!/^\d+$/.test(itemNo) || stock.charAt(0)==="#"){ stat.excluded++; continue; }
+      if(EXCLUDE_STOCK.has(stock.toUpperCase())){ stat.excluded++; continue; }   // e.g. SHPFEE01 (shipping fee) - not a product
       // drop voided / non-confirmed lines by TRANSACT (col J): keep only allowed types (C, R)
       if(!KEEP_T.has(trim(row[iTRANS]).toUpperCase())){ stat.voided++; continue; }
       stat.lineItems++;
@@ -1072,6 +1076,7 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
       const stock=cleanCode(row[iSTOCK]); if(!stock) continue;
       const itemNo=trim(row[iITEM]);
       if(!/^\d+$/.test(itemNo) || stock.charAt(0)==="#") continue;      // merchandise only
+      if(EXCLUDE_STOCK.has(stock.toUpperCase())) continue;               // e.g. SHPFEE01 (shipping fee) - not a product
       if(!KEEP.has(trim(row[iTRANS]).toUpperCase())) continue;          // C/R only
       const key=trim(row[iSALES])+"\u0001"+itemNo;
       let g=groups.get(key);
