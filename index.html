@@ -338,7 +338,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.1</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.2</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -518,6 +518,16 @@ function sizeRev(s){ s=trim(s); return /^\d+$/.test(s) ? String(parseInt(s,10)) 
 function locCode(v){ v=trim(v); const m=v.split(/\s*-\s*/); return m[0] ? m[0].trim() : v; }
 
 // Excel serial from Y,M,D (timezone-safe, integer at midnight)
+// SHIFTCODE = YYYYMMDD + shift digit(s), e.g. "202608011" = 2026-08-01 shift 1.
+// The raw DATE column is unreliable on some stores (it can hold the EXPORT date, not the sale date),
+// so the sale date is taken from SHIFTCODE. Returns null when the value is missing/malformed.
+function shiftDate(v){
+  const s=trim(v).replace(/\D/g,"");
+  if(s.length<8) return null;
+  const y=+s.slice(0,4), m=+s.slice(4,6), d=+s.slice(6,8);
+  if(!y||m<1||m>12||d<1||d>31) return null;
+  return { y, m, d, shift: s.slice(8) };
+}
 function excelSerial(y,m,d){ return Math.round((Date.UTC(y,m-1,d) - Date.UTC(1899,11,30)) / 86400000); }
 
 // ISO week number from Y,M,D
@@ -620,11 +630,11 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
   // C = confirmed sale, R = return/exchange (negative net). Dropped: X = void (cancelled bill),
   // T = settlement/tender, I = voucher/package, and any blank/other. (User rule 2026-06-30.)
   const KEEP_T = new Set((opts.keepTxn || ["C","R"]).map(s=>String(s).toUpperCase()));
-  const rows = [], unmatched = [], seenTxn = new Set();
+  const rows = [], unmatched = [], badDate = [], seenTxn = new Set();
   // excluded = non-merchandise lines (payment/discount/tip; ITEM_NO not numeric or STOCK starts with '#')
   // voided   = merchandise lines dropped by the TRANSACT filter (X void / T settlement / etc.)
   // lineItems = kept sale lines (merchandise + allowed TRANSACT); matched or unmatched
-  let stat = { inputLines:0, excluded:0, voided:0, lineItems:0, matched:0, unmatched:0, blank:0, netSales:0, unmatchedNet:0 };
+  let stat = { inputLines:0, excluded:0, voided:0, lineItems:0, matched:0, unmatched:0, blank:0, netSales:0, unmatchedNet:0, badDate:0 };
 
   for(const sf of salesFiles){
     const aoa = sf.aoa;
@@ -634,7 +644,8 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
     const gi = (...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
     const iSALES=gi("SALES"), iDATE=gi("DATE"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
           iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iPRICE=gi("PRICE"), iNETDISC=gi("MTD2_NETDISC"),
-          iTRANS=gi("TRANSACT"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME");
+          iTRANS=gi("TRANSACT"), iCID=gi("CUST_ID"), iCNAME=gi("CUST_NAME"),
+          iSHIFT=gi("SHIFTCODE","MTD2_SHIFTCODE");   // sale date comes from SHIFTCODE (raw DATE can be the export date)
 
     for(let r=hi+1;r<aoa.length;r++){
       const row=aoa[r]; if(!row) continue;
@@ -654,7 +665,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
         if(semi>=0){ const alt = cleanCode(desc.slice(semi+1)); im = itemMaster.byEpoint.get(alt) || itemMaster.byProduct.get(alt); } }
       const qty = num(row[iQTY]); const net = num(row[iNET]); const storeCode = trim(row[iLOC]);
       const price = num(row[iPRICE]); const netDisc = num(row[iNETDISC]);   // raw PRICE (tag price) + MTD2_NETDISC (discount amount)
-      const dt = parseDate(row[iDATE]);
+      const dt = (iSHIFT>=0 ? shiftDate(row[iSHIFT]) : null);   // sale date from SHIFTCODE (YYYYMMDD+shift)
       const loc = locMaster.map.get(storeCode) || {name:"", banner:""};
       const txn = trim(row[iSALES]);
       let tc = 0; if(!seenTxn.has(txn)){ seenTxn.add(txn); tc = 1; }
@@ -667,6 +678,8 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       const head = [ txn, "",
         dt?excelSerial(dt.y,dt.m,dt.d):"", dt?dt.y:"", dt?dt.m:"", dt?isoWeek(dt.y,dt.m,dt.d):"", dt?dt.d:"",
         loc.banner, storeCodeOut, storeName ];
+      // no usable SHIFTCODE -> Date/Year/Month/Week/Day stay blank; row is also listed under "Unmatched Date"
+      if(!dt){ stat.badDate++; badDate.push([txn, storeCodeOut, trim(row[iSHIFT>=0?iSHIFT:iDATE]), stock, qty, net]); }
       stat.netSales += net;
       if(im){
         stat.matched++;
@@ -694,7 +707,7 @@ function transformSales(salesFiles, itemMaster, locMaster, opts){
       }
     }
   }
-  return { rows, unmatched, stat, txnCount: seenTxn.size };
+  return { rows, unmatched, badDate, stat, txnCount: seenTxn.size };
 }
 
 /* ---------- ONLINE (marketplace / BRP) sales transform ---------- */
@@ -1050,7 +1063,8 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
     const H=headerMap(aoa[hi]);
     const gi=(...n)=>{ for(const x of n){ const k=x.toUpperCase(); if(k in H) return H[k]; } return -1; };
     const iSALES=gi("SALES"), iDATE=gi("DATE"), iTIME=gi("TIME"), iLOC=gi("LOCATION"), iITEM=gi("ITEM_NO"),
-          iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iTRANS=gi("TRANSACT");
+          iSTOCK=gi("STOCK"), iDESC=gi("STOCKDESC"), iQTY=gi("QUANTITY"), iNET=gi("MTD2_NETAMT"), iTRANS=gi("TRANSACT"),
+          iSHIFT=gi("SHIFTCODE","MTD2_SHIFTCODE");   // sale date from SHIFTCODE (same rule as Sales Daily Report)
     // collect merchandise C/R lines grouped by (bill SALES + ITEM_NO); scan+void pairs net to 0
     const groups=new Map(), order=[];
     for(let r=hi+1;r<aoa.length;r++){
@@ -1071,7 +1085,7 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
       let im=itemMaster.byEpoint.get(stock);
       if(!im){ const desc=trim(row[iDESC]); const semi=desc.indexOf(";");
         if(semi>=0){ const alt=cleanCode(desc.slice(semi+1)); im=itemMaster.byEpoint.get(alt)||itemMaster.byProduct.get(alt); } }
-      const dt=parseDate(row[iDATE]);
+      const dt=(iSHIFT>=0 ? shiftDate(row[iSHIFT]) : null);   // sale date from SHIFTCODE (YYYYMMDD+shift)
       const dstr = dt ? (String(dt.d).padStart(2,"0")+"/"+String(dt.m).padStart(2,"0")+"/"+dt.y) : "";
       const store=trim(row[iLOC]), sales=trim(row[iSALES]), tm=fmtTime12(row[iTIME]);
       if(locMap){ const lm=locMap.get(store); if(!lm || !lm.palexy) continue; }  // store-gate: include only stores flagged Palexy=Y in Location Master
@@ -1088,7 +1102,7 @@ function transformPalexyTH(salesFiles, itemMaster, opts){
   return { cols: PALEXY_TH_COLS, rows };
 }
 
-const API = { trim, num, excelSerial, isoWeek, parseDate, headerMap, parseItemMaster, parseLocationMaster,
+const API = { trim, num, excelSerial, isoWeek, parseDate, shiftDate, headerMap, parseItemMaster, parseLocationMaster,
   transformSales, transformOnlineSales, transformInventory, salesAnalytics, invAnalytics, serialDate, OUT_COLS, INV_OUT_COLS,
   validateItemMaster, validateLocationMaster, validateSalesFile, validateInventoryFile, validateBRPFile,
   parseShopifyOrders, enrichBrpShopify, transformPalexyTH, PALEXY_TH_COLS };
@@ -1166,6 +1180,7 @@ const I18N = {
     "btn.run":"Generate report","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"Upload the Sales file to continue","need.inv":"Upload the Inventory file to continue","ready.msg":"Ready • {0} raw file(s)",
     "soh.label":"Show rows:","soh.nonzero":"SOH ≠ 0 only","soh.all":"All rows","soh.pos":"SOH > 0 only",
+    "bh.date.0":"Transaction Number","bh.date.1":"Store Code","bh.date.2":"SHIFTCODE (raw)","bh.date.3":"STOCK CODE","bh.date.4":"Sold Qty","bh.date.5":"Net Sales",
     "results.title":"Results","preview.title":"Report preview (first 50 rows)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"Items not found in Item Master","spin.text":"Processing…",
     "toast.done":"Report generated • {0} rows","toast.dl":"Report downloaded","toast.readerr":"Cannot read file: {0}",
     "toast.itemerr":"Cannot read Item Master","toast.locerr":"Cannot read Location Master","toast.onlyxlsx":"Only .xlsx / .xls supported","toast.err":"Error: {0}",
@@ -1222,6 +1237,7 @@ const I18N = {
     "btn.run":"สร้างรายงาน","btn.export":"Sales Daily Report (Xlsx)",
     "need.sales":"กรุณาอัปโหลดไฟล์ Sales ก่อน","need.inv":"กรุณาอัปโหลดไฟล์ Inventory ก่อน","ready.msg":"พร้อมสร้างรายงาน • ไฟล์ดิบ {0} ไฟล์",
     "soh.label":"แสดงแถว:","soh.nonzero":"เฉพาะ SOH ≠ 0","soh.all":"ทั้งหมด","soh.pos":"เฉพาะ SOH > 0",
+    "bh.date.0":"เลขที่บิล","bh.date.1":"รหัสสาขา","bh.date.2":"SHIFTCODE (ค่าดิบ)","bh.date.3":"รหัสสินค้า","bh.date.4":"จำนวน","bh.date.5":"ยอดสุทธิ",
     "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…",
     "toast.done":"สร้างรายงานสำเร็จ • {0} แถว","toast.dl":"ดาวน์โหลดไฟล์รายงานแล้ว","toast.readerr":"อ่านไฟล์ไม่ได้: {0}",
     "toast.itemerr":"อ่าน Item Master ไม่ได้","toast.locerr":"อ่าน Location Master ไม่ได้","toast.onlyxlsx":"รองรับเฉพาะ .xlsx / .xls","toast.err":"เกิดข้อผิดพลาด: {0}",
@@ -1788,6 +1804,11 @@ function exportXlsx(){
     const uws=XLSX.utils.aoa_to_sheet([uHead, ...rep.unmatched]); uws["!cols"]=uHead.map(()=>({wch:16})); uws["!cols"][1].wch=40;
     XLSX.utils.book_append_sheet(wb, uws, "Unmatched");
   }
+  if(state.mode==="sales" && rep.badDate && rep.badDate.length){   // rows whose SHIFTCODE could not give a sale date
+    const bHead=[0,1,2,3,4,5].map(i=>t("bh.date."+i));
+    const bws=XLSX.utils.aoa_to_sheet([bHead, ...rep.badDate]); bws["!cols"]=[{wch:18},{wch:12},{wch:16},{wch:20},{wch:10},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, bws, "Unmatched Date");
+  }
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   XLSX.writeFile(wb, stampName(`${cfg.fileTag}_${tag}.xlsx`), {compression:true}); toast(t("toast.dl"));
 }
@@ -1851,10 +1872,11 @@ function mergeSalesReports(a, b){
   return {
     rows: a.rows.concat(b.rows),
     unmatched: a.unmatched.concat(b.unmatched),
+    badDate: (a.badDate||[]).concat(b.badDate||[]),
     txnCount: (a.txnCount||0)+(b.txnCount||0),
     stat: { inputLines:S("inputLines"), excluded:(a.stat.excluded||0), voided:(a.stat.voided||0), dropped:(b.stat.dropped||0),
             lineItems:S("lineItems"), matched:S("matched"), unmatched:S("unmatched"), blank:S("blank"),
-            netSales:S("netSales"), unmatchedNet:S("unmatchedNet") }
+            netSales:S("netSales"), unmatchedNet:S("unmatchedNet"), badDate:S("badDate") }
   };
 }
 function run(){
