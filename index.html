@@ -275,7 +275,14 @@
   .scroll{max-height:360px;overflow:auto}
   .muted{color:var(--muted)}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 22px;border-radius:10px;box-shadow:var(--shadow-l);font-weight:600;font-size:13px;display:none;z-index:50}
+  .toast.show{display:block}
+  /* ปุ่ม export: ระหว่างสร้างไฟล์ = สปินเนอร์ + "กำลังสร้างไฟล์…" · เสร็จ = เขียว "บันทึกลง Downloads แล้ว" */
+  .btn.busy{pointer-events:none;color:var(--muted2)!important;background:var(--card)!important}
+  .bspin{width:15px;height:15px;flex:none;display:inline-block;border:2px solid rgba(243,113,33,.25);border-top-color:var(--orange);border-radius:50%;animation:sp .8s linear infinite}
+  .btn.done{background:var(--okbg)!important;border-color:var(--ok)!important;color:var(--ok)!important}
+  .bok{font-weight:800;font-size:15px;line-height:1;flex:none}
   .overlay{position:fixed;inset:0;background:rgba(15,42,74,.45);display:none;place-items:center;z-index:40}
+  .overlay.show{display:grid}
   .spin{background:#fff;padding:24px 30px;border-radius:14px;text-align:center;font-weight:700;color:var(--navy)}
   .loader{width:34px;height:34px;border:4px solid var(--line);border-top-color:var(--orange);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 12px}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -338,7 +345,7 @@
           <div class="logo-dept">Intelligent Technology</div>
         </div>
         <div class="brand-div"></div>
-        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.3</span></h1><p data-i18n="app.tagline"></p></div>
+        <div class="brand-txt"><h1>Report Tool<span class="ver">v2.9.5</span></h1><p data-i18n="app.tagline"></p></div>
       </div>
       <div class="topright">
         <div class="clock" title="">
@@ -1186,7 +1193,7 @@ const I18N = {
     "need.sales":"Upload the Sales file to continue","need.inv":"Upload the Inventory file to continue","ready.msg":"Ready • {0} raw file(s)",
     "soh.label":"Show rows:","soh.nonzero":"SOH ≠ 0 only","soh.all":"All rows","soh.pos":"SOH > 0 only",
     "bh.date.0":"Transaction Number","bh.date.1":"Store Code","bh.date.2":"SHIFTCODE (raw)","bh.date.3":"STOCK CODE","bh.date.4":"Sold Qty","bh.date.5":"Net Sales",
-    "results.title":"Results","preview.title":"Report preview (first 50 rows)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"Items not found in Item Master","spin.text":"Processing…",
+    "results.title":"Results","preview.title":"Report preview (first 50 rows)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"Items not found in Item Master","spin.text":"Processing…","spin.export":"Preparing file…","btn.building":"Building the file…","btn.saved":"Saved to Downloads","toast.downloaded":"Downloaded — {0}","toast.importing":"Importing…","toast.imported":"Imported {0}","toast.imported.n":"Imported {0} file(s)",
     "toast.done":"Report generated • {0} rows","toast.dl":"Report downloaded","toast.readerr":"Cannot read file: {0}",
     "toast.itemerr":"Cannot read Item Master","toast.locerr":"Cannot read Location Master","toast.onlyxlsx":"Only .xlsx / .xls supported","toast.err":"Error: {0}",
     "sfx.rows":"{0} rows","sfx.items":"{0} items","sfx.lines":"{0} lines","sfx.days":"{0} days",
@@ -1243,7 +1250,7 @@ const I18N = {
     "need.sales":"กรุณาอัปโหลดไฟล์ Sales ก่อน","need.inv":"กรุณาอัปโหลดไฟล์ Inventory ก่อน","ready.msg":"พร้อมสร้างรายงาน • ไฟล์ดิบ {0} ไฟล์",
     "soh.label":"แสดงแถว:","soh.nonzero":"เฉพาะ SOH ≠ 0","soh.all":"ทั้งหมด","soh.pos":"เฉพาะ SOH > 0",
     "bh.date.0":"เลขที่บิล","bh.date.1":"รหัสสาขา","bh.date.2":"SHIFTCODE (ค่าดิบ)","bh.date.3":"รหัสสินค้า","bh.date.4":"จำนวน","bh.date.5":"ยอดสุทธิ",
-    "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…",
+    "results.title":"ผลลัพธ์","preview.title":"ตัวอย่างรายงาน (50 แถวแรก)","prev.tab.sales":"Sales Daily Report","prev.tab.onlinedeliv":"Online by Delivery Date","prev.tab.palexy":"Palexy Report MY","unmatched.title":"สินค้าที่ยังไม่เจอใน Item Master","spin.text":"กำลังประมวลผล…","spin.export":"กำลังสร้างไฟล์…","btn.building":"กำลังสร้างไฟล์…","btn.saved":"บันทึกลง Downloads แล้ว","toast.downloaded":"ดาวน์โหลดแล้ว — {0}","toast.importing":"กำลังนำเข้าไฟล์…","toast.imported":"นำเข้าแล้ว {0}","toast.imported.n":"นำเข้าแล้ว {0} ไฟล์",
     "toast.done":"สร้างรายงานสำเร็จ • {0} แถว","toast.dl":"ดาวน์โหลดไฟล์รายงานแล้ว","toast.readerr":"อ่านไฟล์ไม่ได้: {0}",
     "toast.itemerr":"อ่าน Item Master ไม่ได้","toast.locerr":"อ่าน Location Master ไม่ได้","toast.onlyxlsx":"รองรับเฉพาะ .xlsx / .xls","toast.err":"เกิดข้อผิดพลาด: {0}",
     "sfx.rows":"{0} แถว","sfx.items":"{0} รายการ","sfx.lines":"{0} บรรทัด","sfx.days":"{0} วัน",
@@ -1276,7 +1283,7 @@ const rawArr = () => state.mode ? state.raw[state.mode] : [];
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-const toast = (m,ms=2600) => { const el=$("#toast"); el.textContent=m; el.style.display="block"; clearTimeout(el._t); el._t=setTimeout(()=>el.style.display="none",ms); };
+const toast = (m,ms=2600) => { const el=$("#toast"); el.textContent=m; el.classList.add("show"); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove("show"),ms); };
 const fmtInt = n => Number(n).toLocaleString("en-US");
 const fmtMoney = n => Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtBaht = n => "฿"+Number(Math.round(n)).toLocaleString("en-US");
@@ -1309,6 +1316,7 @@ async function addOnline(fileList){  // online marketplace (BRP) files — valid
     state.online.push({name:f.name, aoa});
   }
   renderOnlineList(); refreshState(); persist();
+  const _add=fileList.length-badFiles.length; if(_add>0) toast(t("toast.imported.n", fmtInt(_add)));
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));
 }
 function renderShopifyList(){ renderList("#list-shopify", (state.shopify.files||[]).map(f=>({name:f.name+(f.n?` • ${fmtInt(f.n)} orders`:"")})), true, i=>{
@@ -1330,6 +1338,7 @@ async function addShopify(fileList){  // Shopify orders_export (.csv) — fills 
   }
   rebuildShopifyMaps();
   renderShopifyList(); updateReportChrome(); refreshState(); persist();
+  const _add=fileList.length-bad.length; if(_add>0) toast(t("toast.imported.n", fmtInt(_add)));
   if(bad.length) alertModal(t("valid.title"), bad.join("\n\n"));
 }
 // rebuild hoka/rev maps from the currently-loaded files (upload order = later file wins on duplicate order no)
@@ -1350,9 +1359,10 @@ function exportBrpUpdated(){
   if(!header){ toast(t("toast.err","no BRP")); return; }
   const ws=XLSX.utils.aoa_to_sheet([header, ...allRows]);
   ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
+  styleSheetHeader(ws, header.length, allRows.length);
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "BRP");
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, stampName(`Online info Updated_${tag}.xlsx`), {compression:true});
+  { const _n=stampName(`Online info Updated_${tag}.xlsx`); __didExport=true; __lastExportName=_n; XLSX.writeFile(wb, _n, {compression:true}); }
   toast(t("toast.brpupd", fmtInt(matched)));
 }
 /* ---- minimal ZIP writer (store / no compression) for multi-file export ---- */
@@ -1375,7 +1385,8 @@ function makeZip(files){
 // append the EXPORT date-time to a filename (before extension) so files exported on different days/times never collide
 function nowStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0"); return `EX${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }   // EX = export marker
 function stampName(name){ const i=name.lastIndexOf("."); return i<0 ? name+"_"+nowStamp() : name.slice(0,i)+"_"+nowStamp()+name.slice(i); }
-function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},150); }
+let __didExport=false, __lastExportName="";   // ตั้งค่าเฉพาะเมื่อมีไฟล์ถูกดาวน์โหลดจริง
+function downloadBlob(blob,name){ __didExport=true; __lastExportName=name; const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},150); }
 // Online-only Sales report, split into one .xlsx per Delivery Date (+ "No Delivery Date"), zipped. Uses Shopify-enriched dates if uploaded.
 // Collection Detail summary for an Online-by-Delivery file: group by Store (Shopify -> +Payment Method),
 // Bill = distinct Marketplace Order No, Net Sales = AR+AG+AH (Subtotal after Seller Voucher + Shipping Fee + Shipping Fee SST).
@@ -1399,11 +1410,24 @@ function onlineSummaryAoA(rows, H){
   aoa.push(["Total", tb, r2(tn)]);
   return aoa;
 }
+// หัวตารางมาตรฐานของทุกชีต: พื้นนาวี ตัวอักษรขาวหนา + ตัวกรอง (AutoFilter) ครอบทั้งช่วงข้อมูล
+function styleSheetHeader(ws, ncols, nrows){
+  const thin={style:"thin",color:{rgb:"D0D7E2"}};
+  const hdr={ font:{bold:true,color:{rgb:"FFFFFF"},sz:11}, fill:{fgColor:{rgb:"0F2A4A"}},
+              alignment:{horizontal:"center",vertical:"center"},
+              border:{top:thin,bottom:thin,left:thin,right:thin} };
+  for(let c=0;c<ncols;c++){ const ref=XLSX.utils.encode_cell({r:0,c});
+    if(!ws[ref]) ws[ref]={t:"s",v:""};
+    ws[ref].s=hdr; }
+  ws["!autofilter"]={ ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:Math.max(nrows,1), c:Math.max(ncols-1,0)}}) };
+  ws["!rows"]=ws["!rows"]||[]; ws["!rows"][0]={hpt:22};
+  return ws;
+}
 // build the BRP-style data worksheet (header + rows, auto column widths)
 function onlineDataSheet(rows, header){
   const ws=XLSX.utils.aoa_to_sheet([header, ...rows]);
   ws["!cols"]=header.map(h=>({wch:Math.max(9,Math.min(30,String(h||"").length+2))}));
-  return ws;
+  return styleSheetHeader(ws, header.length, rows.length);
 }
 // build the styled Collection-Detail "Summary" worksheet (REV navy header + borders + Total highlight)
 function onlineSummarySheet(rows, header, note){
@@ -1455,16 +1479,17 @@ function exportOnlineByDelivery(){
       const retMissing = statusReturn && !hasR;   // Status=Returned but Returned Date blank -> anomaly
       const dv=dnum(dRaw), rv=dnum(rRaw);
       const retFromCutoff = hasR ? (isNaN(rv) ? true : rv>=RET_CUTOFF_N) : null;   // Returned on/after 01/08/2026 (unparseable -> treat as on/after)
+      const cmpRD = (hasD&&hasR) ? ((isNaN(dv)||isNaN(rv)) ? 1 : (rv<dv?-1:(rv===dv?0:1))) : null;   // R vs D: -1 before, 0 same day, 1 after (unparseable -> after)
       // Problem Orders categories (mutually exclusive, priority top-down)
       if(!hasD) pNoDeliv.push(r);                       // no delivery date (incl. returned w/o delivery) -> No Delivery Date
       else if(retMissing) pRetMissing.push(r);          // Status=Returned & no Returned Date (has delivery) -> Returned Missing Date
       else if(hasR){
         if(!retFromCutoff) pBeforeCut.push(r);          // returned before cutoff -> single sheet
-        else { const cmp = (isNaN(dv)||isNaN(rv)) ? 1 : (rv<dv?-1:(rv===dv?0:1));   // returned on/after cutoff -> split by R vs D
-          if(cmp<0) pRetBefore.push(r); else if(cmp===0) pRetSame.push(r); else pRetAfter.push(r); }
+        else { if(cmpRD<0) pRetBefore.push(r); else if(cmpRD===0) pRetSame.push(r); else pRetAfter.push(r); }   // >= cutoff -> split by R vs D
       }
-      // Daily file: keep when has delivery, NOT a Returned-missing-date anomaly, and (no returned OR returned on/after cutoff)
-      if(hasD && !retMissing && (!hasR || retFromCutoff)){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
+      // Daily file: keep NO-return rows, or Returned that is BOTH on/after cutoff AND After Delivery (R>D).
+      // Same Day (R=D) และ Before Delivery (R<D) ตัดออกจาก daily แม้ >= cutoff -> อยู่เฉพาะใน Problem Orders
+      if(hasD && !retMissing && (!hasR || (retFromCutoff && cmpRD>0))){ if(!dayGroups.has(dRaw)) dayGroups.set(dRaw,[]); dayGroups.get(dRaw).push(r); }
     });
   });
   const problemCount = pNoDeliv.length+pRetMissing.length+pBeforeCut.length+pRetAfter.length+pRetSame.length+pRetBefore.length;
@@ -1511,6 +1536,7 @@ async function addRaw(fileList){
     state.raw[state.mode].push({name:f.name, aoa});
   }
   renderRawList(); refreshState(); persist();
+  const _add=fileList.length-badFiles.length; if(_add>0) toast(t("toast.imported.n", fmtInt(_add)));
   if(badFiles.length) alertModal(t("valid.title"), badFiles.join("\n\n"));  // one popup for all rejected files
 }
 function clearItem(){ state.item=null; renderList("#list-item",[],false); const i=$("#in-item"); if(i) i.value=""; updateHome(); refreshState(); persist(); }
@@ -1521,7 +1547,7 @@ async function setItem(f){
   if(!vr.ok){ alertBad("valid.item", f.name, vr.missing); return; }
   state.item={name:f.name, data:parseItemMaster(aoa)};
   renderList("#list-item",[{name:`${f.name} • ${fmtInt(state.item.data.count)} SKU`}],true,()=>clearItem());
-  updateHome(); refreshState(); persist();
+  updateHome(); refreshState(); persist(); toast(t("toast.imported", f.name));
 }
 async function setLoc(f){
   let wb; try{ wb=await readWorkbook(f); }catch(e){ toast(t("toast.locerr")); return; }
@@ -1529,14 +1555,21 @@ async function setLoc(f){
   if(!vr.ok){ alertBad("valid.loc", f.name, vr.missing); return; }
   state.loc={name:f.name, data:parseLocationMaster(aoa)};
   renderList("#list-loc",[{name:`${f.name} • ${fmtInt(state.loc.data.count)}`}],true,()=>clearLoc());
-  updateHome(); refreshState(); persist();
+  updateHome(); refreshState(); persist(); toast(t("toast.imported", f.name));
+}
+// แสดงสปินเนอร์ + toast ระหว่างอ่าน/ตรวจไฟล์ตอน import (คุมที่เดียว ครอบทุกการ์ด)
+async function runImport(handler, arg){
+  $("#spin-txt").textContent=t("toast.importing"); $("#overlay").classList.add("show"); toast(t("toast.importing"), 60000);
+  try{ await handler(arg); }
+  catch(e){ console.error(e); toast(t("toast.err", e.message), 4000); }
+  finally{ $("#overlay").classList.remove("show"); $("#toast").classList.remove("show"); }
 }
 function wireDrop(dropId, inputId, handler, multi){
   const drop=$(dropId), input=$(inputId);
-  input.addEventListener("change", e=>{ const fs=[...e.target.files]; if(!fs.length) return; multi?handler(fs):handler(fs[0]); input.value=""; });
+  input.addEventListener("change", e=>{ const fs=[...e.target.files]; if(!fs.length) return; runImport(handler, multi?fs:fs[0]); input.value=""; });
   ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("dragover");}));
   ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("dragover");}));
-  drop.addEventListener("drop",e=>{ const fs=[...e.dataTransfer.files].filter(f=>/\.xlsx?$/i.test(f.name)); if(!fs.length){toast(t("toast.onlyxlsx"));return;} multi?handler(fs):handler(fs[0]); });
+  drop.addEventListener("drop",e=>{ const fs=[...e.dataTransfer.files].filter(f=>/\.(xlsx?|csv)$/i.test(f.name)); if(!fs.length){toast(t("toast.onlyxlsx"));return;} runImport(handler, multi?fs:fs[0]); });
 }
 
 /* ---------- i18n apply ---------- */
@@ -1584,6 +1617,8 @@ function updateReportChrome(){
   $("#drop-online").style.display = state.mode==="sales" ? "block" : "none";
   $("#btn-brpupd").style.display = state.mode==="sales" ? "inline-flex" : "none";
   $("#btn-onlinedeliv").style.display = state.mode==="sales" ? "inline-flex" : "none";
+  { const be=$("#btn-export"); clearTimeout(be._revert); be.classList.remove("done","busy");   // เปลี่ยนโหมด/ภาษา -> คืนปุ่มเป็นปกติ ไม่ให้ค้างสถานะเขียว
+    if(be.dataset.origHtml){ be.innerHTML=be.dataset.origHtml; delete be.dataset.origHtml; } }
   $("#btn-export").lastElementChild.textContent = t(state.mode==="sales"?"btn.export.sales":"btn.export.inv");
   $("#btn-pdf").lastElementChild.textContent = t(state.mode==="sales"?"btn.pdf.sales":"btn.pdf.inv");
   const g1=document.querySelector("#view-report .grid1"); if(g1) g1.classList.toggle("pair", state.mode==="sales");
@@ -1802,20 +1837,23 @@ function exportXlsx(){
     if(state.mode==="sales"){ setZ(r,2,"yyyy-mm-dd"); [24,25,28,29,30].forEach(c=>setZ(r,c,"#,##0.00")); [31,32].forEach(c=>setZ(r,c,"0.00%")); setZ(r,26,"#,##0.####"); setZ(r,33,"0"); }
     else { [20,21,23,24].forEach(c=>setZ(r,c,"#,##0.00")); setZ(r,22,"#,##0"); setZ(r,19,"0.##%"); }
   }
-  ws["!cols"]=COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))})); ws["!freeze"]={xSplit:0,ySplit:1};
+  ws["!cols"]=COLS.map(h=>({wch:Math.max(9,Math.min(34,h.length+2))}));
+  styleSheetHeader(ws, COLS.length, last);
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, cfg.reportSheet);
   if(rep.unmatched.length){
     const uHead = state.mode==="sales" ? [0,1,2,3,4].map(i=>t("uh.sales."+i)) : [0,1,2,3,4,5].map(i=>t("uh.inv."+i));
     const uws=XLSX.utils.aoa_to_sheet([uHead, ...rep.unmatched]); uws["!cols"]=uHead.map(()=>({wch:16})); uws["!cols"][1].wch=40;
+    styleSheetHeader(uws, uHead.length, rep.unmatched.length);
     XLSX.utils.book_append_sheet(wb, uws, "Unmatched");
   }
   if(state.mode==="sales" && rep.badDate && rep.badDate.length){   // rows whose SHIFTCODE could not give a sale date
     const bHead=[0,1,2,3,4,5].map(i=>t("bh.date."+i));
     const bws=XLSX.utils.aoa_to_sheet([bHead, ...rep.badDate]); bws["!cols"]=[{wch:18},{wch:12},{wch:16},{wch:20},{wch:10},{wch:14}];
+    styleSheetHeader(bws, bHead.length, rep.badDate.length);
     XLSX.utils.book_append_sheet(wb, bws, "Unmatched Date");
   }
   const d=new Date(); const tag=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  XLSX.writeFile(wb, stampName(`${cfg.fileTag}_${tag}.xlsx`), {compression:true}); toast(t("toast.dl"));
+  { const _n=stampName(`${cfg.fileTag}_${tag}.xlsx`); __didExport=true; __lastExportName=_n; XLSX.writeFile(wb, _n, {compression:true}); }
 }
 // Palexy Report MY: 16-col POS shape, e-point ONLY (no BRP/online).
 // Split into one .xlsx per Date (all stores of that date together), zipped.
@@ -1833,8 +1871,8 @@ function exportPalexy(){
   const palexyWS=(rws)=>{ const ws=XLSX.utils.aoa_to_sheet([rep.cols, ...rws]);
     const setZ=(r,c,z)=>{ const ref=XLSX.utils.encode_cell({r,c}); const cell=ws[ref]; if(cell&&typeof cell.v==="number"){cell.z=z; cell.t="n";} };
     for(let r=1;r<=rws.length;r++){ setZ(r,10,"#,##0.00"); setZ(r,11,"0"); setZ(r,12,"#,##0.00"); }
-    ws["!cols"]=rep.cols.map(h=>({wch:Math.max(9,Math.min(28,String(h).length+3))})); ws["!freeze"]={xSplit:0,ySplit:1};
-    return ws; };
+    ws["!cols"]=rep.cols.map(h=>({wch:Math.max(9,Math.min(28,String(h).length+3))}));
+    return styleSheetHeader(ws, rep.cols.length, rws.length); };
   const mk=(rws)=>{ const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, palexyWS(rws), "POS Data");
     return new Uint8Array(XLSX.write(wb,{type:"array",bookType:"xlsx",compression:true})); };
   // per-store summary file: one sheet per store (Code + Name), full 16-col transactions (all dates)
@@ -1885,7 +1923,7 @@ function mergeSalesReports(a, b){
   };
 }
 function run(){
-  $("#overlay").style.display="grid";
+  $("#spin-txt").textContent=t("spin.text"); $("#overlay").classList.add("show");
   setTimeout(()=>{ try{
     let rep;
     if(state.mode==="sales"){
@@ -1900,7 +1938,7 @@ function run(){
     }
     state.report=rep; renderResults(rep); $("#results").scrollIntoView({behavior:"smooth",block:"start"});
     toast(t("toast.done", fmtInt(rep.rows.length))); if(_persistOn) doSave();
-  }catch(e){ console.error(e); toast(t("toast.err", e.message),4000); } finally{ $("#overlay").style.display="none"; } },60);
+  }catch(e){ console.error(e); toast(t("toast.err", e.message),4000); } finally{ $("#overlay").classList.remove("show"); } },60);
 }
 
 /* ---------- live clock (user's local time zone) ---------- */
@@ -2019,16 +2057,38 @@ wireDrop("#drop-online","#in-online", addOnline, true);
 wireDrop("#drop-shopify","#in-shopify", addShopify, true);
 wireDrop("#drop-item","#in-item", setItem, false);
 wireDrop("#drop-loc","#in-loc", setLoc, false);
+// ทุกปุ่ม export: โชว์สปินเนอร์ในปุ่ม + overlay ระหว่างสร้างไฟล์ แล้วติ๊กถูกสั้นๆ เมื่อเสร็จ
+function runExport(sel, fn){
+  const btn=$(sel); if(!btn || btn.disabled) return;
+  if(!btn.dataset.origHtml) btn.dataset.origHtml=btn.innerHTML;   // เก็บหน้าตาเดิมของปุ่มไว้คืนค่า
+  const orig=btn.dataset.origHtml;
+  clearTimeout(btn._revert);
+  btn.classList.remove("done"); btn.classList.add("busy"); btn.disabled=true;
+  btn.innerHTML=`<span class="bspin"></span><span>${esc(t("btn.building"))}</span>`;
+  setTimeout(()=>{   // ให้เบราว์เซอร์วาดสปินเนอร์ก่อนเริ่มงานหนัก
+    __didExport=false; __lastExportName="";
+    try{ fn(); }catch(e){ console.error(e); toast(t("toast.err", e.message),4000); }
+    finally{
+      btn.classList.remove("busy"); btn.disabled=false;
+      if(__didExport){   // ได้ไฟล์จริง -> ปุ่มเขียว + toast บอกชื่อไฟล์
+        btn.classList.add("done");
+        btn.innerHTML=`<span class="bok">\u2713</span><span>${esc(t("btn.saved"))}</span>`;
+        toast(t("toast.downloaded", __lastExportName||""), 5000);
+        btn._revert=setTimeout(()=>{ btn.classList.remove("done"); btn.innerHTML=orig; },6000);
+      } else { btn.innerHTML=orig; }   // เด้ง alert เพราะเงื่อนไขไม่ครบ -> คืนปุ่มเดิม ไม่ขึ้นเขียว
+    }
+  },60);
+}
 const activate=(el,fn)=>{ el.addEventListener("click",fn); el.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fn(); } }); };
 activate($("#rc-sales"), ()=>goReport("sales"));
 activate($("#rc-inv"), ()=>goReport("inv"));
 $("#btn-back").addEventListener("click", goHome);
 $("#btn-run").addEventListener("click", run);
-$("#btn-export").addEventListener("click", exportXlsx);
-$("#btn-palexy").addEventListener("click", exportPalexy);
+$("#btn-export").addEventListener("click", ()=>runExport("#btn-export", exportXlsx));
+$("#btn-palexy").addEventListener("click", ()=>runExport("#btn-palexy", exportPalexy));
 $("#btn-pdf").addEventListener("click", exportPDF);
-$("#btn-brpupd").addEventListener("click", exportBrpUpdated);
-$("#btn-onlinedeliv").addEventListener("click", exportOnlineByDelivery);
+$("#btn-brpupd").addEventListener("click", ()=>runExport("#btn-brpupd", exportBrpUpdated));
+$("#btn-onlinedeliv").addEventListener("click", ()=>runExport("#btn-onlinedeliv", exportOnlineByDelivery));
 window.addEventListener("beforeprint", ()=>{ populatePrintHead(); document.body.classList.add("printing"); });
 window.addEventListener("afterprint", ()=>{ document.body.classList.remove("printing"); });
 $("#btn-clear").addEventListener("click", clearData);
